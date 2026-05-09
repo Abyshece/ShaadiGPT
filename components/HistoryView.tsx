@@ -1,0 +1,263 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { useAuth } from '../lib/AuthContext';
+import { useToast } from '../lib/useToast';
+import { loadHistory, deleteSearch, clearHistory } from '../lib/searchHistoryService';
+import { runSearch } from '../lib/matchingService';
+import { incrementSearchCount, computeSearchAllowance } from '../lib/profileService';
+import MatchCard from './MatchCard';
+import ProfileModal from './ProfileModal';
+import UpgradeModal from './UpgradeModal';
+import { IconSearch, IconTrash, IconClock, IconHistory } from '../constants';
+import type { SavedSearch } from '../lib/searchHistoryService';
+import type { MatchCandidate } from '../types';
+
+// ============================================================================
+// HistoryView
+//
+// Lists the user's past searches. Click one to re-run it (against current
+// candidate pool — results may differ from the snapshot).
+// ============================================================================
+
+const HistoryView: React.FC = () => {
+  const { profile, session, refreshProfile } = useAuth();
+  const { showToast } = useToast();
+
+  const [history, setHistory] = useState<SavedSearch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeSearch, setActiveSearch] = useState<SavedSearch | null>(null);
+  const [results, setResults] = useState<MatchCandidate[]>([]);
+  const [rerunning, setRerunning] = useState(false);
+  const [selectedCandidate, setSelectedCandidate] = useState<MatchCandidate | null>(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+
+  const fetchHistory = useCallback(async () => {
+    if (!session?.user.id) return;
+    setLoading(true);
+    const { searches, error } = await loadHistory(session.user.id);
+    setLoading(false);
+    if (error) {
+      showToast(`Couldn't load history: ${error}`, 'error');
+      return;
+    }
+    setHistory(searches);
+  }, [session?.user.id, showToast]);
+
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  const handleRerun = useCallback(async (saved: SavedSearch) => {
+    if (!profile || !session?.user.id) return;
+
+    const allowance = computeSearchAllowance(profile);
+    if (!allowance.allowed) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    setActiveSearch(saved);
+    setRerunning(true);
+    setResults([]);
+
+    try {
+      const output = await runSearch({
+        searcherId: session.user.id,
+        searcher: profile,
+        prompt: saved.prompt,
+        filters: saved.filters,
+      });
+      setResults(output.candidates);
+      await incrementSearchCount(session.user.id, profile);
+      await refreshProfile();
+      showToast(`Re-ran with ${output.candidates.length} fresh matches`, 'success');
+    } catch (e: unknown) {
+      showToast('Re-run failed', 'error');
+    } finally {
+      setRerunning(false);
+    }
+  }, [profile, session?.user.id, refreshProfile, showToast]);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Delete this saved search?')) return;
+    const { error } = await deleteSearch(id);
+    if (error) {
+      showToast(`Couldn't delete: ${error}`, 'error');
+      return;
+    }
+    showToast('Deleted', 'success');
+    setHistory((prev) => prev.filter((s) => s.id !== id));
+    if (activeSearch?.id === id) {
+      setActiveSearch(null);
+      setResults([]);
+    }
+  };
+
+  const handleClearAll = async () => {
+    if (!session?.user.id) return;
+    if (!window.confirm(`Clear all ${history.length} saved searches? This can't be undone.`)) return;
+    const { error } = await clearHistory(session.user.id);
+    if (error) {
+      showToast(`Couldn't clear: ${error}`, 'error');
+      return;
+    }
+    showToast('History cleared', 'success');
+    setHistory([]);
+    setActiveSearch(null);
+    setResults([]);
+  };
+
+  if (!profile) {
+    return <div className="p-12 text-center text-gray-400">Loading…</div>;
+  }
+
+  const formatRelativeTime = (iso: string) => {
+    const ms = Date.now() - new Date(iso).getTime();
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString();
+  };
+
+  const filterSummary = (f: SavedSearch['filters']): string => {
+    const parts: string[] = [];
+    if (f.ageRange) parts.push(`age ${f.ageRange[0]}–${f.ageRange[1]}`);
+    if (f.neighborhood) parts.push(`in ${f.neighborhood}`);
+    if (f.religion) parts.push(f.religion);
+    if (f.educationLevel) parts.push(f.educationLevel);
+    if (f.datingIntention) parts.push(f.datingIntention);
+    if (f.familyPlans) parts.push(f.familyPlans);
+    if (f.isVerified) parts.push('verified only');
+    if (f.isPremium) parts.push('Pro only');
+    return parts.length === 0 ? 'No filters' : parts.join(' · ');
+  };
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="max-w-6xl mx-auto py-8 px-6 lg:px-12">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-1">Search History</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Re-run any past search with one click. Results will reflect your current candidate pool.
+            </p>
+          </div>
+          {history.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-20 bg-gray-100 dark:bg-zinc-800 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : history.length === 0 ? (
+          <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900/50 rounded-xl border border-gray-100 dark:border-zinc-800">
+            <div className="text-5xl mb-4"><IconHistory /></div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No searches yet</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+              Run a search from the "Find Match" tab and it'll show up here.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* History list */}
+            <div className="space-y-2 mb-8">
+              {history.map((s) => (
+                <div
+                  key={s.id}
+                  className={`group flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer ${
+                    activeSearch?.id === s.id
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                      : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 hover:border-gray-400 dark:hover:border-zinc-600'
+                  }`}
+                  onClick={() => handleRerun(s)}
+                >
+                  <div className="w-10 h-10 bg-gray-100 dark:bg-zinc-800 rounded-full flex items-center justify-center text-gray-500 dark:text-gray-400 flex-shrink-0">
+                    <IconSearch />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {s.prompt || <span className="italic text-gray-400">(no prompt)</span>}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2 mt-0.5">
+                      <span className="flex items-center gap-1"><IconClock /> {formatRelativeTime(s.createdAt)}</span>
+                      <span>·</span>
+                      <span>{s.resultIds.length} matches found</span>
+                      <span className="hidden sm:inline">·</span>
+                      <span className="hidden sm:inline truncate">{filterSummary(s.filters)}</span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDelete(s.id); }}
+                    className="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete this search"
+                  >
+                    <IconTrash />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Re-run results */}
+            {activeSearch && (
+              <div className="border-t border-gray-200 dark:border-zinc-800 pt-8">
+                <div className="mb-4">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                    Re-running: <span className="text-gray-500">"{activeSearch.prompt || '(no prompt)'}"</span>
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{filterSummary(activeSearch.filters)}</p>
+                </div>
+
+                {rerunning ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="aspect-[3/4] rounded-xl bg-gray-100 dark:bg-zinc-800 animate-pulse" />
+                    ))}
+                  </div>
+                ) : results.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 italic text-center py-8">
+                    No matches with these criteria right now.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {results.map((c) => (
+                      <MatchCard key={c.id} candidate={c} onClick={() => setSelectedCandidate(c)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {selectedCandidate && (
+        <ProfileModal
+          candidate={selectedCandidate}
+          isPro={profile.subscriptionTier === 'PRO'}
+          onClose={() => setSelectedCandidate(null)}
+          onUpgrade={() => { setSelectedCandidate(null); setShowUpgradeModal(true); }}
+        />
+      )}
+
+      {showUpgradeModal && (
+        <UpgradeModal
+          reason="daily_limit"
+          resetInHours={computeSearchAllowance(profile).resetInHours}
+          onClose={() => setShowUpgradeModal(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+export default HistoryView;

@@ -1,0 +1,255 @@
+// ============================================================================
+// profileService (Phase 4 update)
+//
+// Adds:
+//   - incrementSearchCount() — daily search counter, resets at midnight
+//   - incrementLikeCount() — daily like counter (used in Phase 5)
+//   - markVerified() — flips verification_status (stub for Phase 4 testing)
+//   - canSearch() — returns whether user can run another search today
+//   - DAILY_LIMITS — constant config
+// ============================================================================
+
+import { supabase } from './supabase';
+import { profileToRowUpdate, settingsToRowUpdate } from './profileMapping';
+import type { ProfileRow } from './database.types';
+import type { UserProfile, UserSettings } from '../types';
+
+export const DAILY_LIMITS = {
+  FREE: { searches: 1, likes: 6 },
+  PRO:  { searches: Infinity, likes: Infinity },
+} as const;
+
+// ----------------------------------------------------------------------------
+// Update arbitrary profile fields (camelCase keys → DB row update)
+// ----------------------------------------------------------------------------
+
+export async function updateProfile(
+  userId: string,
+  changes: Partial<UserProfile>
+): Promise<{ row: ProfileRow | null; error: string | null }> {
+  const update = profileToRowUpdate(changes);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(update)
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) return { row: null, error: error.message };
+  return { row: data, error: null };
+}
+
+// ----------------------------------------------------------------------------
+// Update settings
+// ----------------------------------------------------------------------------
+
+export async function updateSettings(
+  userId: string,
+  settings: UserSettings
+): Promise<{ row: ProfileRow | null; error: string | null }> {
+  const update = settingsToRowUpdate(settings);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(update)
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) return { row: null, error: error.message };
+  return { row: data, error: null };
+}
+
+// ----------------------------------------------------------------------------
+// Toggle a single field's hidden status on the user's public profile
+// ----------------------------------------------------------------------------
+
+export async function toggleHiddenField(
+  userId: string,
+  currentHidden: string[],
+  fieldKey: string
+): Promise<{ row: ProfileRow | null; error: string | null }> {
+  const isCurrentlyHidden = currentHidden.includes(fieldKey);
+  const newHidden = isCurrentlyHidden
+    ? currentHidden.filter((k) => k !== fieldKey)
+    : [...currentHidden, fieldKey];
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ hidden_fields: newHidden })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) return { row: null, error: error.message };
+  return { row: data, error: null };
+}
+
+// ----------------------------------------------------------------------------
+// Soft-delete account
+// ----------------------------------------------------------------------------
+
+export async function softDeleteAccount(userId: string): Promise<{ error: string | null }> {
+  const wipe: Partial<ProfileRow> = {
+    name: null,
+    email: null,
+    phone_number: null,
+    description: null,
+    photo_urls: [],
+    hidden_fields: [],
+    onboarding_complete: false,
+    is_verified: false,
+    verification_status: 'unverified',
+  };
+
+  const { error } = await supabase.from('profiles').update(wipe).eq('id', userId);
+  if (error) return { error: error.message };
+  await supabase.auth.signOut();
+  return { error: null };
+}
+
+// ============================================================================
+// PHASE 4 ADDITIONS
+// ============================================================================
+
+// ----------------------------------------------------------------------------
+// canSearch — checks daily limit. Returns { allowed, remaining, resetIn }
+// ----------------------------------------------------------------------------
+
+export interface SearchAllowance {
+  allowed: boolean;
+  remaining: number;
+  isPro: boolean;
+  // hours until reset (for display)
+  resetInHours: number;
+}
+
+export function computeSearchAllowance(profile: UserProfile): SearchAllowance {
+  const tier = profile.subscriptionTier ?? 'FREE';
+  const isPro = tier === 'PRO';
+
+  if (isPro) {
+    return { allowed: true, remaining: Infinity, isPro: true, resetInHours: 0 };
+  }
+
+  const limit = DAILY_LIMITS.FREE.searches;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const lastDate = profile.lastSearchDate?.slice(0, 10);
+  const used = lastDate === today ? (profile.dailySearchCount ?? 0) : 0;
+  const remaining = Math.max(0, limit - used);
+
+  // Hours until midnight UTC
+  const now = new Date();
+  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const resetInHours = Math.ceil((tomorrow.getTime() - now.getTime()) / (1000 * 60 * 60));
+
+  return {
+    allowed: remaining > 0,
+    remaining,
+    isPro: false,
+    resetInHours,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// incrementSearchCount — bump daily counter, reset on new day
+// ----------------------------------------------------------------------------
+
+export async function incrementSearchCount(
+  userId: string,
+  currentProfile: UserProfile
+): Promise<{ error: string | null }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const lastDate = currentProfile.lastSearchDate?.slice(0, 10);
+  const isNewDay = lastDate !== today;
+
+  const newCount = isNewDay ? 1 : (currentProfile.dailySearchCount ?? 0) + 1;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      daily_search_count: newCount,
+      last_search_date: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ----------------------------------------------------------------------------
+// incrementLikeCount — same pattern, for Phase 5
+// ----------------------------------------------------------------------------
+
+export async function incrementLikeCount(
+  userId: string,
+  currentProfile: UserProfile
+): Promise<{ error: string | null }> {
+  const today = new Date().toISOString().slice(0, 10);
+  const lastDate = currentProfile.lastLikeDate?.slice(0, 10);
+  const isNewDay = lastDate !== today;
+
+  const newCount = isNewDay ? 1 : (currentProfile.dailyLikeCount ?? 0) + 1;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      daily_like_count: newCount,
+      last_like_date: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ----------------------------------------------------------------------------
+// markVerified — Phase 4 testing stub. Real flow comes in Phase 6.
+// ----------------------------------------------------------------------------
+
+export async function markVerified(userId: string): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      is_verified: true,
+      verification_status: 'verified',
+    })
+    .eq('id', userId);
+
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ----------------------------------------------------------------------------
+// Verification lockout: 72 hours after account creation, unverified users
+// are soft-locked from search/like actions until they verify.
+// ----------------------------------------------------------------------------
+
+export interface VerificationStatus {
+  isVerified: boolean;
+  isLockedOut: boolean;
+  hoursUntilLockout: number;  // 0 if already locked out
+  hoursSinceCreation: number;
+}
+
+export function computeVerificationStatus(profile: UserProfile): VerificationStatus {
+  const isVerified = profile.isVerified === true;
+  if (isVerified) {
+    return { isVerified: true, isLockedOut: false, hoursUntilLockout: 0, hoursSinceCreation: 0 };
+  }
+
+  const created = profile.accountCreated;
+  if (!created) {
+    return { isVerified: false, isLockedOut: false, hoursUntilLockout: 72, hoursSinceCreation: 0 };
+  }
+
+  const hoursSince = (Date.now() - created) / (1000 * 60 * 60);
+  const hoursUntil = Math.max(0, 72 - hoursSince);
+  return {
+    isVerified: false,
+    isLockedOut: hoursSince >= 72,
+    hoursUntilLockout: Math.ceil(hoursUntil),
+    hoursSinceCreation: Math.floor(hoursSince),
+  };
+}

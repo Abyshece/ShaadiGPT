@@ -1,0 +1,344 @@
+import React, { useState, useEffect } from 'react';
+import { IconX, IconLock, IconZap } from '../constants';
+import type { FilterOptions } from '../types';
+
+// ============================================================================
+// FilterPanel
+//
+// Slide-out drawer from the right side. Free users see basic filters; Pro
+// users see all filters with the lock icons removed.
+// ============================================================================
+
+interface FilterPanelProps {
+  isOpen: boolean;
+  initialFilters: FilterOptions;
+  isPro: boolean;
+  onApply: (filters: FilterOptions) => void;
+  onClose: () => void;
+  onUpgrade: () => void;
+}
+
+const FREE_FILTERS_KEYS = ['ageRange', 'neighborhood'] as const;
+
+const FilterPanel: React.FC<FilterPanelProps> = ({
+  isOpen, initialFilters, isPro, onApply, onClose, onUpgrade,
+}) => {
+  const [filters, setFilters] = useState<FilterOptions>(initialFilters);
+
+  // Sync when re-opened
+  useEffect(() => {
+    if (isOpen) setFilters(initialFilters);
+  }, [isOpen, initialFilters]);
+
+  const update = <K extends keyof FilterOptions>(key: K, value: FilterOptions[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearAll = () => {
+    setFilters({
+      isOnline: false,
+      isVerified: false,
+      isPremium: false,
+    });
+  };
+
+  const handleApply = () => {
+    onApply(filters);
+    onClose();
+  };
+
+  const ageRange = filters.ageRange ?? [21, 45];
+
+  // ---- helper components ---------------------------------------------------
+
+  const FilterRow = ({
+    label, locked, children,
+  }: { label: string; locked?: boolean; children: React.ReactNode }) => (
+    <div className={`py-3 ${locked ? 'opacity-60' : ''}`}>
+      <div className="flex items-center justify-between mb-2">
+        <label className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">
+          {label}
+        </label>
+        {locked && (
+          <button
+            onClick={onUpgrade}
+            className="flex items-center gap-1 text-[10px] font-bold text-yellow-700 dark:text-yellow-400 hover:underline"
+          >
+            <IconLock /> Pro
+          </button>
+        )}
+      </div>
+      <div className={locked ? 'pointer-events-none' : ''}>{children}</div>
+    </div>
+  );
+
+  const Select = ({
+    value, onChange, options,
+  }: { value: string | undefined; onChange: (v: string) => void; options: { value: string; label: string }[] }) => (
+    <select
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>{o.label}</option>
+      ))}
+    </select>
+  );
+
+  const Toggle = ({
+    checked, onChange, label,
+  }: { checked: boolean; onChange: (v: boolean) => void; label: string }) => (
+    <button
+      onClick={() => onChange(!checked)}
+      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border transition-colors ${
+        checked
+          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
+          : 'bg-white dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-700 dark:text-gray-300 hover:border-gray-400 dark:hover:border-zinc-600'
+      }`}
+    >
+      <span className="text-sm">{label}</span>
+      <div className={`w-9 h-5 rounded-full relative transition-colors ${checked ? 'bg-blue-500' : 'bg-gray-300 dark:bg-zinc-600'}`}>
+        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all ${checked ? 'left-4' : 'left-0.5'}`} />
+      </div>
+    </button>
+  );
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 z-[200] bg-black/30 backdrop-blur-sm transition-opacity ${
+          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <aside
+        className={`fixed right-0 top-0 bottom-0 w-full sm:w-[400px] bg-white dark:bg-zinc-900 z-[210] shadow-2xl border-l border-gray-200 dark:border-zinc-800 transition-transform overflow-hidden flex flex-col ${
+          isOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-zinc-800 flex-shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Filters</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Refine your search pool</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-500 dark:text-gray-400"
+          >
+            <IconX />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 divide-y divide-gray-100 dark:divide-zinc-800">
+          {/* Age range — always free */}
+          <FilterRow label="Age range">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">{ageRange[0]}</span>
+              <div className="flex-1 px-2">
+                <input
+                  type="range"
+                  min={18}
+                  max={80}
+                  value={ageRange[0]}
+                  onChange={(e) => {
+                    const v = Math.min(Number(e.target.value), ageRange[1] - 1);
+                    update('ageRange', [v, ageRange[1]]);
+                  }}
+                  className="w-full"
+                />
+                <input
+                  type="range"
+                  min={18}
+                  max={80}
+                  value={ageRange[1]}
+                  onChange={(e) => {
+                    const v = Math.max(Number(e.target.value), ageRange[0] + 1);
+                    update('ageRange', [ageRange[0], v]);
+                  }}
+                  className="w-full"
+                />
+              </div>
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">{ageRange[1]}</span>
+            </div>
+          </FilterRow>
+
+          {/* Location/neighborhood — always free */}
+          <FilterRow label="Location contains">
+            <input
+              type="text"
+              value={filters.neighborhood ?? ''}
+              onChange={(e) => update('neighborhood', e.target.value)}
+              placeholder="e.g. Mumbai, Bangalore"
+              className="w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </FilterRow>
+
+          {/* Religion — Pro */}
+          <FilterRow label="Religion" locked={!isPro}>
+            <Select
+              value={filters.religion}
+              onChange={(v) => update('religion', v || undefined)}
+              options={[
+                { value: '', label: 'Any' },
+                { value: 'Hindu', label: 'Hindu' },
+                { value: 'Muslim', label: 'Muslim' },
+                { value: 'Christian', label: 'Christian' },
+                { value: 'Sikh', label: 'Sikh' },
+                { value: 'Jain', label: 'Jain' },
+                { value: 'Buddhist', label: 'Buddhist' },
+                { value: 'Jewish', label: 'Jewish' },
+                { value: 'Spiritual', label: 'Spiritual' },
+                { value: 'Agnostic', label: 'Agnostic' },
+                { value: 'Atheist', label: 'Atheist' },
+              ]}
+            />
+          </FilterRow>
+
+          {/* Education — Pro */}
+          <FilterRow label="Education" locked={!isPro}>
+            <Select
+              value={filters.educationLevel}
+              onChange={(v) => update('educationLevel', v || undefined)}
+              options={[
+                { value: '', label: 'Any' },
+                { value: 'High School', label: 'High School' },
+                { value: `Bachelor's`, label: `Bachelor's` },
+                { value: `Master's`, label: `Master's` },
+                { value: 'PhD', label: 'PhD' },
+                { value: 'Trade School', label: 'Trade School' },
+              ]}
+            />
+          </FilterRow>
+
+          {/* Dating intention — Pro */}
+          <FilterRow label="Looking for" locked={!isPro}>
+            <Select
+              value={filters.datingIntention}
+              onChange={(v) => update('datingIntention', v || undefined)}
+              options={[
+                { value: '', label: 'Any' },
+                { value: 'Marriage', label: 'Marriage' },
+                { value: 'Long-term relationship', label: 'Long-term relationship' },
+                { value: 'Long-term, open to short', label: 'Long-term, open to short' },
+                { value: 'Casual / Dating', label: 'Casual / Dating' },
+                { value: 'Friendship', label: 'Friendship' },
+              ]}
+            />
+          </FilterRow>
+
+          {/* Children/family plans — Pro */}
+          <FilterRow label="Wants children" locked={!isPro}>
+            <Select
+              value={filters.familyPlans}
+              onChange={(v) => update('familyPlans', v || undefined)}
+              options={[
+                { value: '', label: 'Any' },
+                { value: 'Wants children', label: 'Wants children' },
+                { value: 'Open to children', label: 'Open to children' },
+                { value: 'Does not want children', label: 'Does not want children' },
+              ]}
+            />
+          </FilterRow>
+
+          {/* Lifestyle filters — Pro */}
+          <FilterRow label="Drinking" locked={!isPro}>
+            <Select
+              value={filters.drinking}
+              onChange={(v) => update('drinking', v || undefined)}
+              options={[
+                { value: '', label: 'Any' },
+                { value: 'No', label: 'No' },
+                { value: 'Socially', label: 'Socially' },
+                { value: 'Regularly', label: 'Regularly' },
+              ]}
+            />
+          </FilterRow>
+
+          <FilterRow label="Smoking" locked={!isPro}>
+            <Select
+              value={filters.smoking}
+              onChange={(v) => update('smoking', v || undefined)}
+              options={[
+                { value: '', label: 'Any' },
+                { value: 'No', label: 'No' },
+                { value: 'Socially', label: 'Socially' },
+                { value: 'Regularly', label: 'Regularly' },
+              ]}
+            />
+          </FilterRow>
+
+          {/* Toggles */}
+          <div className="py-3 space-y-2">
+            <Toggle
+              checked={filters.isVerified}
+              onChange={(v) => update('isVerified', v)}
+              label="Verified profiles only"
+            />
+            <Toggle
+              checked={filters.isPremium}
+              onChange={(v) => update('isPremium', v)}
+              label="Pro members only"
+            />
+            <Toggle
+              checked={filters.hasInstagram ?? false}
+              onChange={(v) => update('hasInstagram', v)}
+              label="Has Instagram"
+            />
+            <Toggle
+              checked={filters.hasLinkedin ?? false}
+              onChange={(v) => update('hasLinkedin', v)}
+              label="Has LinkedIn"
+            />
+          </div>
+
+          {/* Pro upsell at bottom for free users */}
+          {!isPro && (
+            <div className="py-4 mt-2">
+              <div className="bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <div className="text-yellow-500 flex-shrink-0 mt-0.5"><IconZap /></div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-1">Unlock all filters</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                      Pro lets you filter by religion, education, intent, lifestyle, and more.
+                    </p>
+                    <button
+                      onClick={onUpgrade}
+                      className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm hover:opacity-90"
+                    >
+                      Upgrade to Pro
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 p-4 border-t border-gray-200 dark:border-zinc-800 flex gap-2 bg-white dark:bg-zinc-900">
+          <button
+            onClick={clearAll}
+            className="flex-1 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
+          >
+            Clear all
+          </button>
+          <button
+            onClick={handleApply}
+            className="flex-[2] py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-bold shadow-sm hover:opacity-90"
+          >
+            Apply filters
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+};
+
+export default FilterPanel;

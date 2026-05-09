@@ -1,0 +1,142 @@
+// ============================================================================
+// blocksService
+//
+// Wraps the `blocks` and `reports` tables.
+//
+// Blocking is one-directional in the DB but bidirectional in effect — the
+// app code uses my_blocked_ids view to filter out everyone who blocked or
+// was blocked by the current user.
+// ============================================================================
+
+import { supabase } from './supabase';
+
+export type ReportReason =
+  | 'spam'
+  | 'fake_profile'
+  | 'inappropriate_content'
+  | 'harassment'
+  | 'underage'
+  | 'other';
+
+export const REPORT_REASONS: { value: ReportReason; label: string }[] = [
+  { value: 'spam', label: 'Spam or scam' },
+  { value: 'fake_profile', label: 'Fake or impersonation' },
+  { value: 'inappropriate_content', label: 'Inappropriate photos or content' },
+  { value: 'harassment', label: 'Harassment or threats' },
+  { value: 'underage', label: 'Underage user' },
+  { value: 'other', label: 'Other' },
+];
+
+// ----------------------------------------------------------------------------
+// blockUser — insert into blocks. Also unmatches if currently matched.
+// ----------------------------------------------------------------------------
+
+export async function blockUser(
+  blockerId: string,
+  blockedId: string,
+  reason?: string
+): Promise<{ error: string | null }> {
+  // First, unmatch them if a match exists
+  const userA = blockerId < blockedId ? blockerId : blockedId;
+  const userB = blockerId < blockedId ? blockedId : blockerId;
+
+  await supabase
+    .from('matches')
+    .update({ unmatched_at: new Date().toISOString(), unmatched_by: blockerId })
+    .eq('user_a_id', userA)
+    .eq('user_b_id', userB)
+    .is('unmatched_at', null);
+
+  // Then insert the block
+  const { error } = await supabase
+    .from('blocks')
+    .insert({
+      blocker_id: blockerId,
+      blocked_id: blockedId,
+      reason,
+    });
+
+  if (error) {
+    if (error.code === '23505') {
+      return { error: null }; // already blocked = success
+    }
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+// ----------------------------------------------------------------------------
+// unblockUser — remove a block (one-directional; only undoes blocks I created)
+// ----------------------------------------------------------------------------
+
+export async function unblockUser(
+  blockerId: string,
+  blockedId: string
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('blocks')
+    .delete()
+    .eq('blocker_id', blockerId)
+    .eq('blocked_id', blockedId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ----------------------------------------------------------------------------
+// listMyBlockedIds — IDs blocked in either direction (uses view)
+// ----------------------------------------------------------------------------
+
+export async function listMyBlockedIds(): Promise<{ ids: Set<string>; error: string | null }> {
+  const { data, error } = await supabase
+    .from('my_blocked_ids')
+    .select('other_id');
+  if (error) return { ids: new Set(), error: error.message };
+  return { ids: new Set((data ?? []).map((r) => r.other_id as string)), error: null };
+}
+
+// ----------------------------------------------------------------------------
+// listBlockedByMe — only people I explicitly blocked (for an unblock UI)
+// ----------------------------------------------------------------------------
+
+export async function listBlockedByMe(blockerId: string): Promise<{
+  ids: { blockedId: string; createdAt: string; reason: string | null }[];
+  error: string | null;
+}> {
+  const { data, error } = await supabase
+    .from('blocks')
+    .select('blocked_id, created_at, reason')
+    .eq('blocker_id', blockerId)
+    .order('created_at', { ascending: false });
+  if (error) return { ids: [], error: error.message };
+  return {
+    ids: (data ?? []).map((r) => ({
+      blockedId: r.blocked_id as string,
+      createdAt: r.created_at as string,
+      reason: (r.reason as string) ?? null,
+    })),
+    error: null,
+  };
+}
+
+// ----------------------------------------------------------------------------
+// reportUser — submit a report. Unlike blocking, this does not unmatch.
+// (The user can choose to also block separately.)
+// ----------------------------------------------------------------------------
+
+export async function reportUser(
+  reporterId: string,
+  reportedId: string,
+  reason: ReportReason,
+  details?: string
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('reports')
+    .insert({
+      reporter_id: reporterId,
+      reported_id: reportedId,
+      reason,
+      details,
+    });
+  if (error) return { error: error.message };
+  return { error: null };
+}

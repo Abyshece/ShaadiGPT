@@ -1,0 +1,341 @@
+import React, { useState } from 'react';
+import { Button } from './NotionUI';
+import { IconMail, IconGoogle, IconChevronRight, IconX, IconLock } from '../constants';
+import { supabase } from '../lib/supabase';
+
+interface AuthProps {
+  // Called when sign-in or signup OTP-send is initiated.
+  // For sign-in: user is now logged in, parent can dismiss.
+  // For signup: parent should switch to the email-verification screen.
+  onSignupInitiated: (email: string) => void;
+  onSignInSuccess: () => void;
+  onClose?: () => void;
+}
+
+const Auth: React.FC<AuthProps> = ({ onSignupInitiated, onSignInSuccess, onClose }) => {
+  const [mode, setMode] = useState<'MENU' | 'SIGNIN' | 'SIGNUP' | 'FORGOT'>('MENU');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const clearMessages = () => {
+    setError(null);
+    setInfo(null);
+  };
+
+  const handleGoogle = async () => {
+    clearMessages();
+    setIsLoading(true);
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}`,
+      },
+    });
+    if (oauthError) {
+      setError(oauthError.message);
+      setIsLoading(false);
+    }
+    // On success, the browser redirects to Google. We never reach here.
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+    if (!email || !password) {
+      setError('Email and password are required.');
+      return;
+    }
+    setIsLoading(true);
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setIsLoading(false);
+    if (signInError) {
+      setError(signInError.message);
+      return;
+    }
+    onSignInSuccess();
+  };
+
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+    if (!email || !password) {
+      setError('Email and password are required.');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
+      return;
+    }
+    setIsLoading(true);
+    const { error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    setIsLoading(false);
+    if (signUpError) {
+      setError(signUpError.message);
+      return;
+    }
+    // Supabase has emailed a 6-digit OTP. Hand off to email-verification screen.
+    onSignupInitiated(email);
+  };
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearMessages();
+    if (!email) {
+      setError('Email is required.');
+      return;
+    }
+    setIsLoading(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setIsLoading(false);
+    if (resetError) {
+      setError(resetError.message);
+      return;
+    }
+    setInfo(`If an account exists for ${email}, we've sent reset instructions.`);
+  };
+
+  // ---- presentation ----------------------------------------------------------
+
+  const containerClasses = onClose
+    ? 'fixed inset-0 z-[200] flex items-center justify-center p-4 bg-white/50 backdrop-blur-[10px] animate-fade-in font-sans'
+    : 'flex flex-col items-center justify-center p-6 min-h-screen bg-white dark:bg-[#191919] font-sans';
+
+  const cardClasses = onClose
+    ? 'w-full max-w-[340px] py-6 px-6 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.35)] dark:shadow-[0_25px_50px_-12px_rgba(0,0,0,0.6)] border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-xl relative'
+    : 'w-full max-w-sm p-8 shadow-xl border border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 rounded-xl relative';
+
+  return (
+    <div className={containerClasses}>
+      <div className={cardClasses}>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-black dark:text-gray-500 dark:hover:text-white transition-colors rounded-full hover:bg-gray-100 dark:hover:bg-zinc-800"
+          >
+            <div className="transform scale-75"><IconX /></div>
+          </button>
+        )}
+
+        <div className="mb-6 flex flex-col items-center text-center">
+          <div className="text-4xl mb-2">💍</div>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white leading-tight mb-0.5">ShaadiGPT</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-[10px] font-medium uppercase tracking-wide">
+            {mode === 'SIGNUP' ? 'Create your account' : mode === 'FORGOT' ? 'Reset your password' : 'Welcome back'}
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-3 px-3 py-2 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 text-xs font-medium text-red-700 dark:text-red-300">
+            {error}
+          </div>
+        )}
+        {info && (
+          <div className="mb-3 px-3 py-2 rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300">
+            {info}
+          </div>
+        )}
+
+        {mode === 'MENU' && (
+          <div className="flex flex-col gap-2.5">
+            <button
+              onClick={handleGoogle}
+              disabled={isLoading}
+              className="relative flex items-center justify-center w-full h-9 px-4 border border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors text-xs font-semibold text-gray-900 dark:text-gray-100 group disabled:opacity-50"
+            >
+              <span className="absolute left-4 opacity-80 group-hover:opacity-100 transition-opacity"><IconGoogle /></span>
+              <span>Continue with Google</span>
+            </button>
+
+            <button
+              onClick={() => { clearMessages(); setMode('SIGNIN'); }}
+              className="relative flex items-center justify-center w-full h-9 px-4 border border-gray-300 dark:border-zinc-700 rounded-lg hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors text-xs font-semibold text-gray-900 dark:text-gray-100 group"
+            >
+              <span className="absolute left-4 opacity-80 group-hover:opacity-100 transition-opacity"><IconMail /></span>
+              <span>Continue with Email</span>
+            </button>
+
+            <div className="mt-4">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200 dark:border-zinc-800" />
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white dark:bg-zinc-900 text-gray-400 dark:text-gray-500 text-[10px] uppercase tracking-wider font-semibold">New here?</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => { clearMessages(); setMode('SIGNUP'); }}
+                className="group w-full flex items-center justify-center gap-2 h-9 bg-black hover:bg-neutral-800 dark:bg-white dark:hover:bg-gray-200 text-white dark:text-black rounded-lg text-xs font-bold transition-all shadow-sm hover:shadow-md"
+              >
+                Create Account
+                <span className="opacity-70 group-hover:translate-x-1 transition-transform"><IconChevronRight /></span>
+              </button>
+
+              <div className="text-center mt-3">
+                <button
+                  onClick={() => { clearMessages(); setMode('FORGOT'); }}
+                  className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mode === 'SIGNIN' && (
+          <form onSubmit={handleSignIn} className="flex flex-col gap-3 animate-fade-in">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
+                placeholder="you@example.com"
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
+                placeholder="••••••••"
+                required
+              />
+              <div className="flex justify-end mt-1">
+                <button
+                  type="button"
+                  onClick={() => { clearMessages(); setMode('FORGOT'); }}
+                  className="text-[10px] uppercase font-bold text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                >
+                  Forgot?
+                </button>
+              </div>
+            </div>
+
+            <Button
+              onClick={() => {}}
+              className="w-full h-9 justify-center mt-1 text-xs font-bold rounded-md"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Signing in…' : 'Log In'}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => { clearMessages(); setMode('MENU'); }}
+              className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1 text-center"
+            >
+              ← Back
+            </button>
+          </form>
+        )}
+
+        {mode === 'SIGNUP' && (
+          <form onSubmit={handleSignUp} className="flex flex-col gap-3 animate-fade-in">
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
+                placeholder="you@example.com"
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
+                placeholder="At least 8 characters"
+                required
+              />
+            </div>
+
+            <Button
+              onClick={() => {}}
+              className="w-full h-9 justify-center mt-1 text-xs font-bold rounded-md"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Creating account…' : 'Create Account'}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => { clearMessages(); setMode('MENU'); }}
+              className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1 text-center"
+            >
+              ← Back
+            </button>
+          </form>
+        )}
+
+        {mode === 'FORGOT' && (
+          <form onSubmit={handleForgot} className="flex flex-col gap-3 animate-fade-in">
+            <div className="text-center mb-1">
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">Enter your email to receive a reset link.</p>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white bg-white dark:bg-zinc-900 text-gray-900 dark:text-white"
+                placeholder="you@example.com"
+                required
+                autoFocus
+              />
+            </div>
+
+            <Button
+              onClick={() => {}}
+              className="w-full h-9 justify-center mt-1 text-xs font-bold rounded-md"
+              disabled={isLoading}
+            >
+              {isLoading ? 'Sending…' : 'Send Reset Link'}
+            </Button>
+
+            <button
+              type="button"
+              onClick={() => { clearMessages(); setMode('MENU'); }}
+              className="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1 text-center"
+            >
+              ← Back
+            </button>
+          </form>
+        )}
+
+        <div className="mt-6 pt-4 border-t border-gray-100 dark:border-zinc-800 text-center">
+          <p className="text-[9px] text-gray-400 dark:text-gray-500 max-w-xs mx-auto leading-relaxed">
+            By continuing, you agree to our <a href="#" className="hover:text-gray-600 dark:hover:text-gray-300 underline">Terms</a> & <a href="#" className="hover:text-gray-600 dark:hover:text-gray-300 underline">Privacy Policy</a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Auth;
