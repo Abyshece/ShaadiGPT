@@ -8,6 +8,7 @@ import PlaceholderTab from './PlaceholderTab';
 import SearchView from './SearchView';
 import HistoryView from './HistoryView';
 import LikesView from './LikesView';
+import MatchesView from './MatchesView';
 import MatchCelebrationModal from './MatchCelebrationModal';
 import { subscribeToNewMatches } from '../lib/chatService';
 import { supabase } from '../lib/supabase';
@@ -15,14 +16,12 @@ import { IconMenu } from '../constants';
 import type { MatchCandidate } from '../types';
 
 // ============================================================================
-// Dashboard (Phase 5 update)
+// Dashboard (Phase 5 batch 3 update)
 //
-// Wires LikesView. Subscribes to new-match realtime events globally so the
-// celebration modal fires no matter which tab the user is on (e.g., they're
-// browsing Likes-You, like someone back, instant match — celebration shows).
-//
-// Also exposes onNavigateToMatches() to children so the celebration's
-// "Send a Message" button can switch tabs.
+// MatchesView is now wired. The deep-link flow works:
+//   1. User likes someone, mutual match fires
+//   2. Celebration modal shows with "Send a Message" button
+//   3. Click → switches to Matches tab AND auto-opens that specific chat
 // ============================================================================
 
 type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings' | 'help';
@@ -38,26 +37,17 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Tracks the last-arrived match for celebration. Phase 5 batch 3 will use
-  // this to deep-link directly into the chat.
   const [pendingMatchOpenId, setPendingMatchOpenId] = useState<string | null>(null);
   const [matchCelebration, setMatchCelebration] = useState<{ matchId: string; candidate: MatchCandidate } | null>(null);
 
-  // ---- Global subscription: fire celebration when anyone likes me back ----
-  //
-  // We can't always know which tab the user is on when the match occurs
-  // (especially on Likes-You where THEY trigger the like, but also when the
-  // OTHER side likes us back unprompted). So we listen here, fetch the
-  // matched user's profile, and show the celebration.
+  // Global new-match subscription (works regardless of which tab is active)
   useEffect(() => {
     if (!session?.user.id) return;
     const myId = session.user.id;
 
     const cleanup = subscribeToNewMatches(myId, async (event) => {
-      // Figure out which side is "the other"
       const otherId = event.userAId === myId ? event.userBId : event.userAId;
 
-      // Fetch their profile for the celebration card
       const { data: row } = await supabase
         .from('profiles')
         .select('id, name, age, location, photo_urls, hidden_fields, subscription_tier, is_verified')
@@ -66,7 +56,6 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
 
       if (!row) return;
 
-      // The celebration only needs minimal MatchCandidate fields
       const candidate: MatchCandidate = {
         id: row.id,
         name: row.name ?? '',
@@ -82,8 +71,6 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
         isVerified: row.is_verified ?? false,
       };
 
-      // Don't double-fire if SearchView/LikesView already showed it; just
-      // ensure the user sees it. State setter is idempotent in practice.
       setMatchCelebration({ matchId: event.matchId, candidate });
     });
 
@@ -105,6 +92,10 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
   }
 
   const handleTabChange = (tab: Tab) => {
+    // Clear deep-link when manually switching tabs (so MatchesView doesn't re-open old chat)
+    if (tab !== 'matches') {
+      setPendingMatchOpenId(null);
+    }
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
   };
@@ -156,14 +147,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
           {activeTab === 'search' && <SearchView onNavigateToMatches={handleNavigateToMatches} />}
           {activeTab === 'history' && <HistoryView />}
           {activeTab === 'likes' && <LikesView />}
-          {activeTab === 'matches' && (
-            <PlaceholderTab
-              title="Matches & Chat"
-              emoji="💬"
-              comingIn="Phase 5 (Batch 3)"
-              description="Mutual likes become matches. Real-time chat with read receipts and date proposals (Pro)."
-            />
-          )}
+          {activeTab === 'matches' && <MatchesView initialMatchId={pendingMatchOpenId} />}
           {activeTab === 'standouts' && (
             <PlaceholderTab
               title="Daily Standouts"

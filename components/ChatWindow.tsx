@@ -1,292 +1,537 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../lib/AuthContext';
+import { useToast } from '../lib/useToast';
+import {
+  listMessages, sendMessage, markRead, subscribeToMatch,
+} from '../lib/chatService';
+import { unmatch } from '../lib/matchesService';
+import MessageBubble from './MessageBubble';
+import BlockReportModal from './BlockReportModal';
+import { IconChevronLeft, IconCheck, IconX, IconZap } from '../constants';
+import type { Message } from '../lib/chatService';
+import type { MatchSummary } from '../lib/matchesService';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { MatchCandidate, ChatMessage } from '../types';
-import { 
-    IconSend, IconSmile, IconChevronLeft, IconMoreHorizontal, 
-    IconUserMinus, IconBan, IconFlag, IconCalendar, IconCheckAll, 
-    IconMapPin, IconClock, IconLock
-} from '../constants';
-import { EMOJI_CATEGORIES } from '../constants';
+// ============================================================================
+// ChatWindow
+//
+// The actual chat: header with other person's photo+name+menu, scrollable
+// message thread, composer at bottom with Pro date-proposal button.
+//
+// Subscribes to Realtime for INSERT and UPDATE events on the messages table
+// scoped to this match_id.
+// ============================================================================
 
 interface ChatWindowProps {
-    activeMatch: MatchCandidate;
-    messages: ChatMessage[];
-    isTyping: boolean;
-    onSendMessage: (text: string) => void;
-    onBack: () => void;
-    onViewProfile: (match: MatchCandidate) => void;
-    onInitiateAction: (action: 'BLOCK' | 'REMOVE' | 'REPORT') => void;
-    onOpenDateModal: () => void;
-    isDateProposalLocked?: boolean;
+  match: MatchSummary;
+  isPro: boolean;
+  myReadReceipts: boolean;
+  onBack: () => void;            // mobile only
+  onUnmatched: () => void;
+  onUpgrade: () => void;
 }
 
-// Date Proposal Card Component (Internal to Window)
-const DateProposalCard = ({ text, isMe, onResponse }: { text: string, isMe: boolean, onResponse: (response: string) => void }) => {
-    const activityMatch = text.match(/Let's meet for \*\*(.*?)\*\*/);
-    const locationMatch = text.match(/📍 \*\*Where:\*\* (.*)/);
-    const timeMatch = text.match(/⏰ \*\*When:\*\* (.*)/);
+const ChatWindow: React.FC<ChatWindowProps> = ({
+  match, isPro, myReadReceipts, onBack, onUnmatched, onUpgrade,
+}) => {
+  const { session } = useAuth();
+  const { showToast } = useToast();
 
-    const activity = activityMatch ? activityMatch[1] : 'a date';
-    const location = locationMatch ? locationMatch[1] : 'Unknown location';
-    const time = timeMatch ? timeMatch[1] : 'TBD';
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [composing, setComposing] = useState('');
+  const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showOverflow, setShowOverflow] = useState(false);
+  const [showBlockReport, setShowBlockReport] = useState<null | 'block' | 'report'>(null);
+  const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false);
+  const [showDateBuilder, setShowDateBuilder] = useState(false);
 
-    const formatDateTime = (dtStr: string) => {
-        const parts = dtStr.split(' at ');
-        if (parts.length === 2) {
-            const dateObj = new Date(`${parts[0]}T${parts[1]}`);
-            if (!isNaN(dateObj.getTime())) {
-                return dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + 
-                       ' • ' + 
-                       dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-            }
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  const userId = session?.user.id;
+  const matchId = match.matchId;
+  const otherPhoto = match.otherUser.photos?.[0];
+
+  // ---- load messages on mount + when match changes ------------------------
+  useEffect(() => {
+    let mounted = true;
+    if (!matchId || !userId) return;
+
+    setLoading(true);
+    listMessages(matchId).then(({ messages, error }) => {
+      if (!mounted) return;
+      if (error) {
+        showToast(`Couldn't load chat: ${error}`, 'error');
+        setLoading(false);
+        return;
+      }
+      setMessages(messages);
+      setLoading(false);
+      // mark messages as read on open
+      markRead(matchId);
+    });
+
+    return () => { mounted = false; };
+  }, [matchId, userId, showToast]);
+
+  // ---- realtime subscription ----------------------------------------------
+  useEffect(() => {
+    if (!matchId || !userId) return;
+    const cleanup = subscribeToMatch(
+      matchId,
+      (newMsg) => {
+        setMessages((prev) => {
+          // Avoid duplicates from optimistic-then-realtime races
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+        // If incoming message, mark read
+        if (newMsg.senderId !== userId) {
+          markRead(matchId);
         }
-        return dtStr;
-    };
-
-    const displayTime = formatDateTime(time);
-
-    return (
-        <div className={`
-            flex flex-col w-full max-w-[320px] bg-white dark:bg-[#202020] rounded-xl border border-gray-200 dark:border-zinc-700 shadow-sm overflow-hidden font-sans
-            ${isMe ? 'ml-auto' : 'mr-auto'}
-        `}>
-            <div className="px-4 py-3 border-b border-gray-100 dark:border-zinc-700/50 flex items-center gap-2 bg-gray-50/50 dark:bg-zinc-800/30">
-                <div className="p-1.5 bg-white dark:bg-zinc-700 rounded border border-gray-200 dark:border-zinc-600 text-gray-500 dark:text-gray-300 shadow-sm">
-                    <IconCalendar />
-                </div>
-                <span className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider">Date Proposal</span>
-                {isMe && <div className="ml-auto text-[10px] text-blue-500 font-bold flex items-center gap-1"><IconCheckAll /> Sent</div>}
-            </div>
-
-            <div className="p-5">
-                <div className="text-lg text-gray-800 dark:text-gray-100 mb-5 leading-snug">
-                    Let's meet for <span className="font-bold border-b-2 border-black/10 dark:border-white/20 px-0.5">{activity}</span>?
-                </div>
-                <div className="grid gap-3">
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50">
-                        <div className="text-red-500 mt-0.5"><IconMapPin /></div>
-                        <div className="min-w-0 flex-1">
-                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">Where</div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 break-words">{location}</div>
-                        </div>
-                    </div>
-                    <div className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-zinc-800/50 border border-gray-100 dark:border-zinc-700/50">
-                        <div className="text-blue-500 mt-0.5"><IconClock /></div>
-                        <div className="min-w-0 flex-1">
-                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-0.5">When</div>
-                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{displayTime}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {!isMe && (
-                <div className="grid grid-cols-3 border-t border-gray-100 dark:border-zinc-700 divide-x divide-gray-100 dark:divide-zinc-700">
-                    <button onClick={() => onResponse(`Yes, I'd love to! ${activity} sounds great. See you there! ✨`)} className="py-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-green-900/10 hover:text-green-600 dark:hover:text-green-400 transition-colors">Yes</button>
-                    <button onClick={() => onResponse(`Maybe! Can we reschedule the time? 🤔`)} className="py-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-yellow-50 dark:hover:bg-yellow-900/10 hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors">Maybe</button>
-                    <button onClick={() => onResponse(`I can't make it then. Sorry! 😔`)} className="py-3 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-red-50 dark:hover:bg-red-900/10 hover:text-red-600 dark:hover:text-red-400 transition-colors">No</button>
-                </div>
-            )}
-        </div>
+      },
+      (updatedMsg) => {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === updatedMsg.id ? updatedMsg : m))
+        );
+      }
     );
+    return cleanup;
+  }, [matchId, userId]);
+
+  // ---- auto-scroll to bottom on new messages ------------------------------
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages.length]);
+
+  // ---- send a text message -------------------------------------------------
+  const handleSend = useCallback(async () => {
+    if (!userId || !composing.trim() || sending) return;
+    const content = composing.trim();
+    setComposing('');
+    setSending(true);
+
+    const { message, error } = await sendMessage(matchId, userId, content, 'text');
+    setSending(false);
+    if (error || !message) {
+      setComposing(content); // restore on error
+      showToast(`Couldn't send: ${error}`, 'error');
+      return;
+    }
+    // Optimistically add (realtime will dedupe)
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === message.id)) return prev;
+      return [...prev, message];
+    });
+  }, [userId, composing, matchId, sending, showToast]);
+
+  // ---- send a date proposal (Pro) -----------------------------------------
+  const handleSendDateProposal = useCallback(async (payload: {
+    activity: string; location: string; datetime: string; notes?: string;
+  }) => {
+    if (!userId) return;
+    const content = JSON.stringify({ ...payload, status: 'pending' });
+    setSending(true);
+    const { message, error } = await sendMessage(matchId, userId, content, 'date_proposal');
+    setSending(false);
+    if (error || !message) {
+      showToast(`Couldn't send proposal: ${error}`, 'error');
+      return;
+    }
+    setMessages((prev) => prev.some((m) => m.id === message.id) ? prev : [...prev, message]);
+    setShowDateBuilder(false);
+    showToast('Date proposal sent', 'success');
+  }, [userId, matchId, showToast]);
+
+  // ---- accept / decline date proposal -------------------------------------
+  const handleAcceptDate = async (msgId: string) => {
+    const original = messages.find((m) => m.id === msgId);
+    if (!original) return;
+    let payload;
+    try { payload = JSON.parse(original.content); } catch { return; }
+    payload.status = 'accepted';
+    // We can't mutate the existing message in DB without an extra schema field;
+    // simpler: send a follow-up text message and update locally.
+    const { error } = await sendMessage(matchId, userId!, `✅ Accepted: ${payload.activity}`, 'text');
+    if (error) {
+      showToast(`Couldn't accept: ${error}`, 'error');
+      return;
+    }
+    showToast('Accepted! 🎉', 'success');
+  };
+
+  const handleDeclineDate = async (msgId: string) => {
+    const original = messages.find((m) => m.id === msgId);
+    if (!original) return;
+    let payload;
+    try { payload = JSON.parse(original.content); } catch { return; }
+    const { error } = await sendMessage(matchId, userId!, `Sorry, ${payload.activity} doesn't work for me. Can we try another time?`, 'text');
+    if (error) {
+      showToast(`Couldn't decline: ${error}`, 'error');
+      return;
+    }
+    showToast('Declined', 'info');
+  };
+
+  // ---- unmatch ------------------------------------------------------------
+  const handleUnmatch = async () => {
+    setShowUnmatchConfirm(false);
+    const { error } = await unmatch(matchId);
+    if (error) {
+      showToast(`Couldn't unmatch: ${error}`, 'error');
+      return;
+    }
+    showToast(`Unmatched ${match.otherUser.name}`, 'info');
+    onUnmatched();
+  };
+
+  // ---- date proposal opener with paywall ----------------------------------
+  const openDateBuilder = () => {
+    if (!isPro) {
+      onUpgrade();
+      return;
+    }
+    setShowDateBuilder(true);
+  };
+
+  if (!userId) return null;
+
+  return (
+    <div className="flex flex-col h-full bg-white dark:bg-[#191919]">
+      {/* Header */}
+      <header className="flex items-center gap-3 p-3 border-b border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex-shrink-0">
+        <button
+          onClick={onBack}
+          className="md:hidden p-1.5 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800"
+        >
+          <IconChevronLeft />
+        </button>
+
+        <div className="w-10 h-10 rounded-full bg-gray-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
+          {otherPhoto ? (
+            <img src={otherPhoto} alt={match.otherUser.name} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            <h3 className="font-bold text-gray-900 dark:text-white truncate">
+              {match.otherUser.name}{match.otherUser.age ? `, ${match.otherUser.age}` : ''}
+            </h3>
+            {match.otherUser.isVerified && <span className="text-blue-500"><IconCheck className="w-3 h-3" /></span>}
+            {match.otherUser.subscriptionTier === 'PRO' && <span className="text-yellow-500"><IconZap /></span>}
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{match.otherUser.location}</p>
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={() => setShowOverflow((v) => !v)}
+            className="p-2 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800"
+          >
+            <span className="block w-5 h-5 leading-5 text-center font-bold">⋯</span>
+          </button>
+          {showOverflow && (
+            <div
+              className="absolute top-12 right-0 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-xl overflow-hidden min-w-[180px] py-1 z-30"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => { setShowOverflow(false); setShowBlockReport('report'); }}
+                className="w-full px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+              >
+                🚩 Report
+              </button>
+              <button
+                onClick={() => { setShowOverflow(false); setShowUnmatchConfirm(true); }}
+                className="w-full px-3 py-2 text-sm text-left text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 flex items-center gap-2"
+              >
+                💔 Unmatch
+              </button>
+              <button
+                onClick={() => { setShowOverflow(false); setShowBlockReport('block'); }}
+                className="w-full px-3 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+              >
+                🚫 Block user
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 sm:p-4 bg-gray-50/50 dark:bg-[#0f0f0f]">
+        {loading ? (
+          <div className="space-y-2 max-w-md mx-auto py-8">
+            <div className="h-10 bg-gray-200 dark:bg-zinc-800 rounded-2xl w-1/2 animate-pulse" />
+            <div className="h-10 bg-gray-200 dark:bg-zinc-800 rounded-2xl w-2/3 ml-auto animate-pulse" />
+            <div className="h-10 bg-gray-200 dark:bg-zinc-800 rounded-2xl w-3/5 animate-pulse" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="text-center py-12 max-w-md mx-auto">
+            <div className="text-5xl mb-3">💬</div>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
+              You matched with {match.otherUser.name}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Say hello! Asking about something specific in their profile is a great way to start.
+            </p>
+          </div>
+        ) : (
+          messages.map((m, i) => {
+            const prev = messages[i - 1];
+            const showAvatar = !prev || prev.senderId !== m.senderId;
+            return (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isMine={m.senderId === userId}
+                showReceipts={myReadReceipts}
+                showAvatar={showAvatar}
+                otherPhoto={otherPhoto}
+                onAcceptDate={handleAcceptDate}
+                onDeclineDate={handleDeclineDate}
+              />
+            );
+          })
+        )}
+      </div>
+
+      {/* Composer */}
+      <div className="border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 flex-shrink-0">
+        <div className="flex items-end gap-2">
+          <button
+            onClick={openDateBuilder}
+            disabled={sending}
+            title={isPro ? 'Propose a date' : 'Propose a date (Pro)'}
+            className={`w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full ${
+              isPro
+                ? 'bg-pink-50 dark:bg-pink-900/30 text-pink-500 hover:bg-pink-100 dark:hover:bg-pink-900/50'
+                : 'bg-gray-100 dark:bg-zinc-800 text-gray-400'
+            }`}
+          >
+            <span className="text-lg">📅</span>
+          </button>
+
+          <textarea
+            ref={composerRef}
+            value={composing}
+            onChange={(e) => setComposing(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={`Message ${match.otherUser.name}…`}
+            rows={1}
+            className="flex-1 bg-gray-100 dark:bg-zinc-800 border-0 rounded-2xl px-4 py-2.5 text-sm text-gray-900 dark:text-white resize-none outline-none focus:ring-2 focus:ring-blue-500 max-h-32"
+          />
+
+          <button
+            onClick={handleSend}
+            disabled={sending || !composing.trim()}
+            className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-full bg-blue-500 text-white shadow-sm hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {sending ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <span className="text-lg leading-none">→</span>
+            )}
+          </button>
+        </div>
+        <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+          Press Enter to send, Shift+Enter for newline
+        </p>
+      </div>
+
+      {/* Date proposal builder modal */}
+      {showDateBuilder && (
+        <DateProposalBuilder
+          onSend={handleSendDateProposal}
+          onClose={() => setShowDateBuilder(false)}
+        />
+      )}
+
+      {/* Unmatch confirm */}
+      {showUnmatchConfirm && (
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+          onClick={() => setShowUnmatchConfirm(false)}
+        >
+          <div
+            className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-sm p-6 border border-gray-200 dark:border-zinc-800"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center mb-5">
+              <div className="text-4xl mb-2">💔</div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+                Unmatch {match.otherUser.name}?
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                You both will no longer see this conversation. This can't be undone.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowUnmatchConfirm(false)}
+                className="flex-1 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUnmatch}
+                className="flex-1 py-2.5 bg-orange-500 text-white rounded-lg text-sm font-bold hover:bg-orange-600 shadow-sm"
+              >
+                Unmatch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Block / Report */}
+      {showBlockReport && (
+        <BlockReportModal
+          mode={showBlockReport}
+          targetId={match.otherUser.id}
+          targetName={match.otherUser.name}
+          onClose={() => setShowBlockReport(null)}
+          onComplete={() => {
+            setShowBlockReport(null);
+            if (showBlockReport === 'block') {
+              onUnmatched(); // blocking unmatches
+            }
+          }}
+        />
+      )}
+    </div>
+  );
 };
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ 
-    activeMatch, messages, isTyping, onSendMessage, onBack, 
-    onViewProfile, onInitiateAction, onOpenDateModal, isDateProposalLocked
-}) => {
-    const [inputText, setInputText] = useState('');
-    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-    const [showMenu, setShowMenu] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const emojiPickerRef = useRef<HTMLDivElement>(null);
-    const menuRef = useRef<HTMLDivElement>(null);
+// ============================================================================
+// DateProposalBuilder — inline modal (kept in same file to keep batch small)
+// ============================================================================
 
-    // Scroll to bottom
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages, isTyping, activeMatch.id]);
+interface DateProposalBuilderProps {
+  onSend: (payload: { activity: string; location: string; datetime: string; notes?: string }) => void;
+  onClose: () => void;
+}
 
-    // Close popovers on click outside
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) {
-            if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
-                setShowEmojiPicker(false);
-            }
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setShowMenu(false);
-            }
-        }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+const DATE_IDEAS = ['☕ Coffee', '🍽️ Dinner', '🥂 Drinks', '🚶 Walk', '🎬 Movie', '🎨 Activity'];
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            if (inputText.trim()) {
-                onSendMessage(inputText);
-                setInputText('');
-                setShowEmojiPicker(false);
-            }
-        }
-    };
+const DateProposalBuilder: React.FC<DateProposalBuilderProps> = ({ onSend, onClose }) => {
+  const [activity, setActivity] = useState('');
+  const [location, setLocation] = useState('');
+  const [datetimeLocal, setDatetimeLocal] = useState('');
+  const [notes, setNotes] = useState('');
 
-    const formatTime = (timestamp: number) => new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const handleSubmit = () => {
+    if (!activity.trim() || !location.trim() || !datetimeLocal) return;
+    const datetime = new Date(datetimeLocal).toISOString();
+    onSend({ activity: activity.trim(), location: location.trim(), datetime, notes: notes.trim() || undefined });
+  };
 
-    return (
-        <div className="flex-1 flex flex-col bg-white dark:bg-zinc-900 h-full relative">
-            {/* Header */}
-            <div className="h-14 border-b border-gray-200 dark:border-zinc-800 flex items-center px-4 justify-between bg-white dark:bg-zinc-900 flex-shrink-0 relative z-30">
-                <div className="flex items-center gap-3">
-                  <button onClick={onBack} className="md:hidden p-1 -ml-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded">
-                      <IconChevronLeft />
-                  </button>
-                  <div 
-                    className="w-8 h-8 rounded overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => onViewProfile(activeMatch)}
-                    title="View Profile"
-                  >
-                      <img src={activeMatch.imageUrls[0]} alt="Avatar" className="w-full h-full object-cover" loading="lazy" decoding="async" />
-                  </div>
-                  <div className="cursor-pointer" onClick={() => onViewProfile(activeMatch)}>
-                      <h3 className="text-sm font-bold text-gray-900 dark:text-white leading-none hover:underline">{activeMatch.name}</h3>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5">
-                        {isTyping ? (
-                             <span className="text-green-600 dark:text-green-400 font-medium animate-pulse">Typing...</span>
-                        ) : activeMatch.isOnline ? (
-                          <><span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span> Online</>
-                        ) : (activeMatch.lastSeen || 'Offline')}
-                      </span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                    <span className="text-xs bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded font-medium mr-2">
-                      {activeMatch.compatibilityScore}% Match
-                    </span>
-                    
-                    <div className="relative" ref={menuRef}>
-                        <button onClick={() => setShowMenu(!showMenu)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded-full text-gray-500 dark:text-gray-400 transition-colors">
-                            <IconMoreHorizontal />
-                        </button>
-                        {showMenu && (
-                            <div className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-zinc-800 rounded-lg shadow-xl border border-gray-100 dark:border-zinc-700 overflow-hidden z-20 animate-fade-in">
-                                <button onClick={() => { onInitiateAction('REMOVE'); setShowMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-700 flex items-center gap-2"><IconUserMinus /> Remove Match</button>
-                                <button onClick={() => { onInitiateAction('BLOCK'); setShowMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-zinc-700 flex items-center gap-2"><IconBan /> Block Match</button>
-                                <div className="h-px bg-gray-100 dark:bg-zinc-700 my-1"></div>
-                                <button onClick={() => { onInitiateAction('REPORT'); setShowMenu(false); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"><IconFlag /> Report Match</button>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
+  // default to tomorrow 7pm
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(19, 0, 0, 0);
+  const defaultDate = tomorrow.toISOString().slice(0, 16);
 
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-white dark:bg-zinc-900">
-                <div className="flex flex-col items-center justify-center py-8 text-gray-400 space-y-2 border-b border-gray-50 dark:border-zinc-800 mb-4">
-                    <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-100 transition-all opacity-50 grayscale" onClick={() => onViewProfile(activeMatch)}>
-                         <img src={activeMatch.imageUrls[0]} className="w-full h-full object-cover" alt="Avatar" loading="lazy" decoding="async" />
-                    </div>
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Start a chat with {activeMatch.name}</p>
-                    <p className="text-[10px] uppercase tracking-widest font-bold opacity-50">{new Date().toLocaleDateString()}</p>
-                </div>
-
-                {messages.map((msg, idx) => {
-                  const isMe = msg.senderId === 'me';
-                  const showAvatar = idx === 0 || messages[idx-1].senderId !== msg.senderId;
-                  const isProposal = msg.text.includes('📅 **Date Proposal**');
-                  
-                  return (
-                    <div key={msg.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group`}>
-                        <div className="w-8 flex-shrink-0 flex flex-col items-center">
-                          {!isMe && showAvatar && (
-                            <img src={activeMatch.imageUrls[0]} className="w-8 h-8 rounded object-cover cursor-pointer hover:opacity-80 transition-opacity" alt={activeMatch.name} onClick={() => onViewProfile(activeMatch)} title="View Profile" loading="lazy" decoding="async" />
-                          )}
-                        </div>
-                        <div className={`max-w-[80%] md:max-w-[70%] space-y-1`}>
-                          {showAvatar && !isProposal && (
-                            <div className={`flex items-baseline gap-2 text-xs ${isMe ? 'flex-row-reverse' : ''}`}>
-                              <span className="font-bold text-gray-900 dark:text-gray-100">{isMe ? 'Me' : activeMatch.name}</span>
-                              <span className="text-gray-400 dark:text-gray-500 text-[10px]">{formatTime(msg.timestamp)}</span>
-                              {isMe && <span className={`transition-colors ${msg.isRead ? 'text-blue-500' : 'text-gray-300 dark:text-gray-600'}`}><IconCheckAll /></span>}
-                            </div>
-                          )}
-                          {isProposal ? (
-                              <DateProposalCard text={msg.text} isMe={isMe} onResponse={onSendMessage} />
-                          ) : (
-                              <div className={`py-2 px-3 rounded text-sm leading-relaxed whitespace-pre-wrap ${isMe ? 'bg-gray-100 dark:bg-zinc-800 text-gray-900 dark:text-gray-100' : 'bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 text-gray-800 dark:text-gray-200'}`}>
-                                {msg.text}
-                              </div>
-                          )}
-                        </div>
-                    </div>
-                  );
-                })}
-
-                {isTyping && (
-                  <div className="flex gap-3">
-                      <div className="w-8 flex-shrink-0"><img src={activeMatch.imageUrls[0]} className="w-8 h-8 rounded object-cover" alt={activeMatch.name} loading="lazy" decoding="async" /></div>
-                      <div>
-                          <div className="flex items-baseline gap-2 text-xs mb-1"><span className="font-bold text-gray-900 dark:text-gray-100">{activeMatch.name}</span></div>
-                          <div className="bg-gray-50 dark:bg-zinc-800 border border-gray-100 dark:border-zinc-700 px-3 py-2 rounded-lg inline-flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce"></span>
-                            <span className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce delay-100"></span>
-                            <span className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-bounce delay-200"></span>
-                          </div>
-                      </div>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input Area */}
-            <div className="p-4 bg-white dark:bg-zinc-900">
-                <div className="max-w-3xl mx-auto relative border border-gray-300 dark:border-zinc-700 rounded-lg shadow-sm focus-within:ring-1 focus-within:ring-black dark:focus-within:ring-white focus-within:border-black dark:focus-within:border-white transition-all bg-white dark:bg-zinc-800">
-                  {showEmojiPicker && (
-                    <div ref={emojiPickerRef} className="absolute bottom-full left-0 mb-2 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 shadow-2xl rounded-xl w-80 h-96 overflow-hidden flex flex-col z-50 animate-fade-in">
-                        <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
-                            {EMOJI_CATEGORIES.map(category => (
-                                <div key={category.name} className="mb-4">
-                                    <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 sticky top-0 bg-white dark:bg-zinc-800 py-1">{category.name}</h4>
-                                    <div className="grid grid-cols-8 gap-1">
-                                        {category.emojis.map(emoji => (
-                                            <button key={emoji} onClick={() => setInputText(prev => prev + emoji)} className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-zinc-700 rounded text-xl transition-colors">{emoji}</button>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                  )}
-
-                  <textarea
-                    value={inputText}
-                    onChange={(e) => setInputText(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={`Message ${activeMatch.name}...`}
-                    className="w-full py-3 pl-3 pr-10 resize-none max-h-32 focus:outline-none text-sm bg-transparent rounded-lg text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
-                    rows={1}
-                    style={{ minHeight: '44px' }}
-                  />
-                  <div className="flex items-center justify-between px-2 pb-2">
-                      <div className="flex gap-1">
-                        <button className={`p-1.5 rounded transition-colors ${showEmojiPicker ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700'}`} onClick={() => setShowEmojiPicker(!showEmojiPicker)} title="Insert Emoji"><IconSmile /></button>
-                        <button 
-                            className={`p-1.5 rounded transition-colors ${isDateProposalLocked ? 'text-gray-300 dark:text-zinc-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-700'}`} 
-                            onClick={() => !isDateProposalLocked && onOpenDateModal()} 
-                            title={isDateProposalLocked ? "Upgrade to plan dates" : "Propose a Date"}
-                        >
-                            {isDateProposalLocked ? <div className="scale-75"><IconLock /></div> : <IconCalendar />}
-                        </button>
-                      </div>
-                      <button onClick={() => { if (inputText.trim()) { onSendMessage(inputText); setInputText(''); setShowEmojiPicker(false); } }} disabled={!inputText.trim()} className={`p-1.5 rounded transition-all ${inputText.trim() ? 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200' : 'text-gray-300 dark:text-zinc-600'}`}><IconSend /></button>
-                  </div>
-                </div>
-                <div className="text-center mt-2"><span className="text-[10px] text-gray-400 dark:text-gray-500">Press Enter to send</span></div>
-            </div>
+  return (
+    <div
+      className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-zinc-800"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-5 border-b border-gray-200 dark:border-zinc-800 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">📅 Propose a date</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-black dark:hover:text-white">
+            <IconX />
+          </button>
         </div>
-    );
+
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Activity</label>
+            <input
+              type="text"
+              value={activity}
+              onChange={(e) => setActivity(e.target.value)}
+              placeholder="e.g. Coffee at Blue Tokai"
+              className="w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg p-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-500"
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {DATE_IDEAS.map((idea) => (
+                <button
+                  key={idea}
+                  onClick={() => setActivity(idea)}
+                  className="text-[11px] px-2.5 py-1 rounded-full bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-300 border border-pink-100 dark:border-pink-900/40 hover:bg-pink-100 dark:hover:bg-pink-900/30"
+                >
+                  {idea}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Location</label>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Blue Tokai, Indiranagar"
+              className="w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg p-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">When</label>
+            <input
+              type="datetime-local"
+              value={datetimeLocal || defaultDate}
+              onChange={(e) => setDatetimeLocal(e.target.value)}
+              className="w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg p-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Notes (optional)</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="e.g. They make great pour-over"
+              className="w-full bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-lg p-2.5 text-sm text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-pink-500 resize-none"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-gray-200 dark:border-zinc-800 flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!activity.trim() || !location.trim()}
+            className="flex-1 py-2.5 bg-pink-500 text-white rounded-lg text-sm font-bold hover:bg-pink-600 shadow-sm disabled:opacity-50"
+          >
+            Send Proposal
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default ChatWindow;
