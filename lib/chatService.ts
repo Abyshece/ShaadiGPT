@@ -120,8 +120,17 @@ export function subscribeToMatch(
   onNewMessage: (msg: Message) => void,
   onUpdate?: (msg: Message) => void  // for read_at flips
 ): () => void {
+export function subscribeToMatch(
+  matchId: string,
+  onNewMessage: (msg: Message) => void,
+  onUpdate?: (msg: Message) => void  // for read_at flips
+): () => void {
+  // Unique suffix prevents reusing a still-joined channel after React
+  // StrictMode double-mounts or tab re-renders.
+  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
   const channel: RealtimeChannel = supabase
-    .channel(`match:${matchId}`)
+    .channel(`match:${matchId}:${suffix}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages', filter: `match_id=eq.${matchId}` },
@@ -157,7 +166,12 @@ export function subscribeToMatch(
     )
     .subscribe();
 
-  return () => { supabase.removeChannel(channel); };
+  let cleaned = false;
+  return () => {
+    if (cleaned) return;
+    cleaned = true;
+    supabase.removeChannel(channel).catch(() => {});
+  };
 }
 
 // ----------------------------------------------------------------------------
@@ -177,43 +191,45 @@ export function subscribeToNewMatches(
   userId: string,
   onMatch: (event: NewMatchEvent) => void
 ): () => void {
-  // Two channels because filter only supports one column
+  // CRITICAL: unique suffix per call so React StrictMode double-mounts and
+  // tab-switching don't reuse a previously-subscribed channel. If you reuse a
+  // channel name with the same `supabase` instance, .on() throws after
+  // .subscribe() because the channel is already "joined".
+  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  const handler = (payload: { new: Record<string, unknown> }) => {
+    const row = payload.new;
+    onMatch({
+      matchId: row.id as string,
+      userAId: row.user_a_id as string,
+      userBId: row.user_b_id as string,
+      createdAt: row.created_at as string,
+    });
+  };
+
   const channelA = supabase
-    .channel(`new_match_a:${userId}`)
+    .channel(`new_match_a:${userId}:${suffix}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'matches', filter: `user_a_id=eq.${userId}` },
-      (payload) => {
-        const row = payload.new as Record<string, unknown>;
-        onMatch({
-          matchId: row.id as string,
-          userAId: row.user_a_id as string,
-          userBId: row.user_b_id as string,
-          createdAt: row.created_at as string,
-        });
-      }
+      handler
     )
     .subscribe();
 
   const channelB = supabase
-    .channel(`new_match_b:${userId}`)
+    .channel(`new_match_b:${userId}:${suffix}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'matches', filter: `user_b_id=eq.${userId}` },
-      (payload) => {
-        const row = payload.new as Record<string, unknown>;
-        onMatch({
-          matchId: row.id as string,
-          userAId: row.user_a_id as string,
-          userBId: row.user_b_id as string,
-          createdAt: row.created_at as string,
-        });
-      }
+      handler
     )
     .subscribe();
 
+  let cleaned = false;
   return () => {
-    supabase.removeChannel(channelA);
-    supabase.removeChannel(channelB);
+    if (cleaned) return;
+    cleaned = true;
+    supabase.removeChannel(channelA).catch(() => {});
+    supabase.removeChannel(channelB).catch(() => {});
   };
 }

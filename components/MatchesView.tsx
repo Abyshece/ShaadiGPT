@@ -85,8 +85,11 @@ const MatchesView: React.FC<MatchesViewProps> = ({ initialMatchId }) => {
   // Also: subscribe to global INSERT on `messages` to refresh more responsively
   useEffect(() => {
     if (!userId) return;
+    // Unique channel name — static names break when this effect re-runs because
+    // the underlying channel is already joined and .on() can't be called again.
+    const channelName = `global_messages_for_list:${userId}:${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('global_messages_for_list')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
@@ -97,7 +100,13 @@ const MatchesView: React.FC<MatchesViewProps> = ({ initialMatchId }) => {
         }
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+
+    let cleaned = false;
+    return () => {
+      if (cleaned) return;
+      cleaned = true;
+      supabase.removeChannel(channel).catch(() => {});
+    };
   }, [userId, fetchMatches]);
 
   if (!profile || !settings || !userId) {
