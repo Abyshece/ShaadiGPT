@@ -1,9 +1,18 @@
 // ============================================================================
-// AuthContext
+// AuthContext (Phase 5 hotfix)
 //
-// One source of truth for the current user's auth session and profile row.
-// Wraps the entire app. Any component can call `useAuth()` to get session,
-// profile, settings, and signOut/refreshProfile helpers.
+// Adds proper error surfacing for profile loading so the app never gets
+// trapped in "Setting up your profile..." indefinitely.
+//
+// New state exposed to consumers:
+//   - profileError: string | null     — last error from loading profile
+//   - profileLoading: boolean         — is a fetch currently in-flight
+//   - profileMissing: boolean         — DB has no profile row for this auth user
+//   - retryLoadProfile()              — manual retry trigger
+//
+// Self-heal: if profileMissing is true, we attempt to INSERT a stub profile
+// row matching the auth user. This rescues users whose handle_new_user
+// trigger didn't fire (e.g. created via admin, OAuth import, etc.).
 // ============================================================================
 
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
@@ -19,8 +28,13 @@ interface AuthContextValue {
   profile: UserProfile | null;
   settings: UserSettings | null;
   loading: boolean;
+  profileLoading: boolean;
+  profileError: string | null;
+  profileMissing: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  retryLoadProfile: () => Promise<void>;
+  healMissingProfile: () => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -29,24 +43,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileMissing, setProfileMissing] = useState(false);
 
-  const loadProfile = useCallback(async (userId: string | undefined) => {
+  const loadProfile = useCallback(async (userId: string | undefined): Promise<void> => {
     if (!userId) {
       setProfileRow(null);
+      setProfileError(null);
+      setProfileMissing(false);
       return;
     }
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
 
-    if (error) {
-      console.warn('[AuthContext] failed to load profile:', error.message);
+    setProfileLoading(true);
+    setProfileError(null);
+    setProfileMissing(false);
+
+    // Wrap the query with a manual timeout so we never sit forever.
+    // 8s is plenty for a single-row primary-key lookup.
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out after 8s. Check your network and Supabase URL.')), 8000)
+    );
+
+    try {
+      const queryPromise = supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as Awaited<typeof queryPromise>;
+
+      if (error) {
+        console.error('[AuthContext] profile query error:', error);
+        setProfileError(error.message);
+        setProfileRow(null);
+        setProfileLoading(false);
+        return;
+      }
+
+      if (!data) {
+        // No row exists for this auth user — the handle_new_user trigger
+        // didn't fire, or this user was created before it existed.
+        console.warn('[AuthContext] no profile row found for user', userId);
+        setProfileMissing(true);
+        setProfileRow(null);
+        setProfileLoading(false);
+        return;
+      }
+
+      setProfileRow(data);
+      setProfileMissing(false);
+      setProfileError(null);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[AuthContext] loadProfile failed:', msg);
+      setProfileError(msg);
       setProfileRow(null);
-      return;
+    } finally {
+      setProfileLoading(false);
     }
-    setProfileRow(data);
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -55,12 +111,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [session?.user.id, loadProfile]);
 
+  const retryLoadProfile = useCallback(async () => {
+    if (session?.user.id) {
+      await loadProfile(session.user.id);
+    }
+  }, [session?.user.id, loadProfile]);
+
+  // Self-heal: insert a stub profile row when the trigger didn't fire.
+  const healMissingProfile = useCallback(async (): Promise<{ error: string | null }> => {
+    if (!session?.user) return { error: 'No active session' };
+    const u = session.user;
+
+    const stub: Partial<ProfileRow> = {
+      id: u.id,
+      email: u.email ?? null,
+      onboarding_complete: false,
+      account_created: Date.now(),
+      subscription_tier: 'FREE',
+      verification_status: 'unverified',
+      is_verified: false,
+      photo_urls: [],
+      hidden_fields: [],
+    };
+
+    const { error } = await supabase.from('profiles').insert(stub);
+    if (error) {
+      console.error('[AuthContext] healMissingProfile insert failed:', error);
+      return { error: error.message };
+    }
+
+    await loadProfile(u.id);
+    return { error: null };
+  }, [session, loadProfile]);
+
   useEffect(() => {
     let mounted = true;
 
-    // Safety net: if anything hangs, unblock UI after 5s
+    // Hard top-level cap so UI never hangs forever even on weird failure modes
     const safetyTimer = setTimeout(() => {
-      if (mounted) setLoading(false);
+      if (mounted) {
+        console.warn('[AuthContext] safety timer fired (5s) — unblocking UI');
+        setLoading(false);
+      }
     }, 5000);
 
     supabase.auth.getSession()
@@ -70,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await loadProfile(data.session?.user.id);
         } catch (e) {
-          console.error('[AuthContext] loadProfile threw:', e);
+          console.error('[AuthContext] initial loadProfile threw:', e);
         }
         setLoading(false);
         clearTimeout(safetyTimer);
@@ -89,7 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         await loadProfile(newSession?.user.id);
       } catch (e) {
-        console.error('[AuthContext] loadProfile (listener) threw:', e);
+        console.error('[AuthContext] onAuthStateChange loadProfile threw:', e);
       }
     });
 
@@ -109,7 +201,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const settings = profileRow ? rowToSettings(profileRow) : null;
 
   return (
-    <AuthContext.Provider value={{ session, profileRow, profile, settings, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{
+      session,
+      profileRow,
+      profile,
+      settings,
+      loading,
+      profileLoading,
+      profileError,
+      profileMissing,
+      signOut,
+      refreshProfile,
+      retryLoadProfile,
+      healMissingProfile,
+    }}>
       {children}
     </AuthContext.Provider>
   );
