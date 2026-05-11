@@ -5,30 +5,41 @@ import Auth from './components/Auth';
 import EmailVerification from './components/EmailVerification';
 import OnboardingShell from './components/onboarding/OnboardingShell';
 import Dashboard from './components/Dashboard';
+import TermsView from './components/TermsView';
+import PrivacyView from './components/PrivacyView';
+import CookieBanner from './components/CookieBanner';
 
 // ============================================================================
-// App (hotfix)
+// App (Phase 6 Batch 1)
 //
-// Properly handles every state of profile loading so the UI never gets
-// trapped indefinitely:
+// Adds legal-page routing (Terms/Privacy accessible anytime) and the cookie
+// consent banner.
 //
-//   1. session=null            → Auth screen
-//   2. session=ok, profileError → ProfileErrorScreen with retry + sign-out
-//   3. session=ok, profileMissing → ProfileMissingScreen with "Create" button
-//   4. session=ok, profileLoading still in flight → brief spinner
-//   5. session=ok, profile loaded, onboarding incomplete → onboarding
-//   6. session=ok, profile loaded, onboarding done → Dashboard
+// Legal pages use a simple state flag rather than a router because we don't
+// have one set up yet. URL-based routing can come in a later polish pass.
 // ============================================================================
+
+type LegalPage = 'terms' | 'privacy' | null;
 
 const AppRouter: React.FC<{
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
-}> = ({ isDarkMode, onToggleDarkMode }) => {
+  legalPage: LegalPage;
+  setLegalPage: (p: LegalPage) => void;
+}> = ({ isDarkMode, onToggleDarkMode, legalPage, setLegalPage }) => {
   const {
     session, profileRow, loading, profileLoading, profileError, profileMissing,
     retryLoadProfile, healMissingProfile, signOut,
   } = useAuth();
   const [pendingSignupEmail, setPendingSignupEmail] = useState<string | null>(null);
+
+  // ---- Legal pages always take precedence over everything else ----
+  if (legalPage === 'terms') {
+    return <TermsView onBack={() => setLegalPage(null)} />;
+  }
+  if (legalPage === 'privacy') {
+    return <PrivacyView onBack={() => setLegalPage(null)} />;
+  }
 
   // 1. Top-level bootstrap loading
   if (loading) {
@@ -86,6 +97,20 @@ const App: React.FC = () => {
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
   });
 
+  const [legalPage, setLegalPage] = useState<LegalPage>(null);
+
+  // Listen for hash-based routing as a fallback (e.g. linked from emails)
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash === 'terms') setLegalPage('terms');
+      else if (hash === 'privacy') setLegalPage('privacy');
+    };
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
   }, [isDarkMode]);
@@ -95,7 +120,15 @@ const App: React.FC = () => {
       <AuthProvider>
         <div className={isDarkMode ? 'dark' : ''}>
           <div className="min-h-screen bg-white dark:bg-[#191919] text-gray-900 dark:text-gray-100 selection:bg-blue-100 dark:selection:bg-blue-900 transition-colors duration-200">
-            <AppRouter isDarkMode={isDarkMode} onToggleDarkMode={() => setIsDarkMode((v) => !v)} />
+            <AppRouter
+              isDarkMode={isDarkMode}
+              onToggleDarkMode={() => setIsDarkMode((v) => !v)}
+              legalPage={legalPage}
+              setLegalPage={setLegalPage}
+            />
+
+            {/* Cookie banner shown over everything until user consents */}
+            <CookieBanner onNavigateToPrivacy={() => setLegalPage('privacy')} />
           </div>
         </div>
       </AuthProvider>
@@ -129,7 +162,6 @@ const ProfileErrorScreen: React.FC<{
     setRetrying(false);
   };
 
-  // Detect common causes to give actionable hints
   const lower = error.toLowerCase();
   let hint = '';
   if (lower.includes('timed out') || lower.includes('timeout') || lower.includes('network')) {
@@ -151,14 +183,8 @@ const ProfileErrorScreen: React.FC<{
         <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
           Couldn't load your profile
         </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-          {error}
-        </p>
-        {hint && (
-          <p className="text-xs text-gray-500 dark:text-gray-500 mb-4 italic">
-            {hint}
-          </p>
-        )}
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{error}</p>
+        {hint && <p className="text-xs text-gray-500 dark:text-gray-500 mb-4 italic">{hint}</p>}
         <div className="flex gap-2 mt-5">
           <button
             onClick={onSignOut}

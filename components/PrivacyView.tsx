@@ -1,0 +1,217 @@
+import React from 'react';
+import { IconChevronLeft, IconShield } from '../constants';
+import { PRIVACY_VERSION } from '../lib/consentService';
+
+// ============================================================================
+// PrivacyView
+//
+// GDPR-compliant Privacy Policy. Plain language, structured by section.
+// Must cover: what data, why, where stored, retention, rights, contact.
+// ============================================================================
+
+interface PrivacyViewProps {
+  onBack: () => void;
+}
+
+const PrivacyView: React.FC<PrivacyViewProps> = ({ onBack }) => {
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <section className="mb-8">
+      <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3">{title}</h2>
+      <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+        {children}
+      </div>
+    </section>
+  );
+
+  return (
+    <div className="min-h-screen bg-white dark:bg-[#191919]">
+      {/* Header */}
+      <header className="sticky top-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur border-b border-gray-200 dark:border-zinc-800">
+        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="p-1.5 -ml-1.5 rounded text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-zinc-800"
+            aria-label="Back"
+          >
+            <IconChevronLeft />
+          </button>
+          <h1 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <IconShield /> Privacy Policy
+          </h1>
+        </div>
+      </header>
+
+      <article className="max-w-3xl mx-auto px-6 py-10">
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-6">
+          Document version: {PRIVACY_VERSION} · Last updated: May 11, 2026
+        </p>
+
+        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-8">
+          This Privacy Policy explains how ShaadiGPT ("we", "us", or "the Service") collects, uses,
+          stores, and protects your personal information when you use our dating and matrimony
+          platform. We are committed to handling your data with care and in accordance with the
+          EU General Data Protection Regulation (GDPR), India's Digital Personal Data Protection
+          Act, and other applicable laws.
+        </p>
+
+        <Section title="1. Who we are">
+          <p>
+            ShaadiGPT is operated by Abhishek (the "Operator"). For any privacy-related questions,
+            you can contact us at <a href="mailto:privacy@shaadigpt.com" className="text-blue-600 dark:text-blue-400 underline">privacy@shaadigpt.com</a>.
+          </p>
+          <p>
+            We are the data controller for the personal information you provide on this platform.
+          </p>
+        </Section>
+
+        <Section title="2. What information we collect">
+          <p>We collect the following categories of personal data:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li><strong>Account data:</strong> email address, password (hashed), date of registration</li>
+            <li><strong>Profile data:</strong> name, age, gender, sexuality, ethnicity, religion, languages, location, hometown, photos, bio, and roughly 80 other optional profile attributes you choose to share (lifestyle, personality, relationship preferences, etc.)</li>
+            <li><strong>Activity data:</strong> likes you send and receive, matches, messages, search queries, login history</li>
+            <li><strong>Technical data:</strong> IP address, browser type, device information, cookies (see Section 8)</li>
+            <li><strong>Payment data:</strong> if you upgrade to Pro, payment is processed by Razorpay; we never see your card details. We retain only the Razorpay subscription ID and transaction status.</li>
+          </ul>
+          <p className="mt-2">
+            Some categories — religion, sexuality, ethnicity, health-related fields — are considered
+            "special category" data under GDPR. We process this only because you have given explicit
+            consent by entering it into your profile, and only for the matchmaking purpose.
+          </p>
+        </Section>
+
+        <Section title="3. Why we process your data">
+          <p>We use your data for:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li>Creating your account and providing the matchmaking service</li>
+            <li>Showing relevant profiles to you and your profile to relevant others</li>
+            <li>Enabling chat between matched users</li>
+            <li>Verifying account identity to prevent fraud and abuse</li>
+            <li>Processing subscription payments (Pro tier)</li>
+            <li>Sending essential service emails (account verification, security alerts)</li>
+            <li>Sending optional notifications (new matches, likes) — only if you opt in</li>
+            <li>Investigating reports and enforcing community guidelines</li>
+            <li>Complying with legal obligations</li>
+          </ul>
+        </Section>
+
+        <Section title="4. Legal basis for processing">
+          <p>Under GDPR, we process your data on the following legal bases:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li><strong>Contract:</strong> processing required to deliver the service you signed up for</li>
+            <li><strong>Consent:</strong> for special-category data (religion, sexuality, etc.), marketing emails, and optional cookies</li>
+            <li><strong>Legitimate interests:</strong> security, fraud prevention, and basic analytics</li>
+            <li><strong>Legal obligation:</strong> where required by law (e.g., responding to legal requests)</li>
+          </ul>
+        </Section>
+
+        <Section title="5. How we share your data">
+          <p>We share data with the following categories of recipients:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li><strong>Other users:</strong> your profile (excluding fields you mark hidden) is visible to other users in search results and matches</li>
+            <li><strong>Supabase (database & auth):</strong> our backend hosting provider, EU/US infrastructure</li>
+            <li><strong>Vercel (web hosting):</strong> hosts the website and serves it from edge locations worldwide</li>
+            <li><strong>Razorpay (payments):</strong> processes Pro subscription payments, based in India</li>
+            <li><strong>Resend (email):</strong> sends transactional emails — when configured with a real domain</li>
+            <li><strong>Law enforcement:</strong> only when legally compelled (court order, subpoena)</li>
+          </ul>
+          <p className="mt-2">
+            We <strong>do not sell</strong> your personal data to anyone, ever. We do not run ads
+            on the platform.
+          </p>
+        </Section>
+
+        <Section title="6. International data transfers">
+          <p>
+            Some of our service providers (Vercel, Supabase) operate globally and may transfer your
+            data outside the European Economic Area. When this happens, we rely on Standard
+            Contractual Clauses approved by the European Commission, or the recipient country's
+            adequacy decision, to ensure your data is protected.
+          </p>
+        </Section>
+
+        <Section title="7. How long we keep your data">
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li><strong>Active account:</strong> as long as you use the service</li>
+            <li><strong>Deleted account:</strong> within 30 days of deletion request. Some records (transactions, fraud-prevention logs) may be retained for up to 7 years where legally required.</li>
+            <li><strong>Consent records:</strong> for the duration of our legal obligation to demonstrate compliance (typically 6 years)</li>
+            <li><strong>Backups:</strong> regularly overwritten; deleted data is gone within 30 days even from backups</li>
+          </ul>
+        </Section>
+
+        <Section title="8. Cookies and tracking">
+          <p>We use cookies and similar technologies for:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li><strong>Essential (always on):</strong> keeping you logged in, security tokens, basic functionality</li>
+            <li><strong>Analytics (optional):</strong> understanding how the service is used to improve it — disabled by default until you consent</li>
+            <li><strong>Marketing (optional):</strong> currently unused, but reserved for future promotional features — disabled by default</li>
+          </ul>
+          <p className="mt-2">
+            You can change your cookie preferences anytime via Settings → Privacy.
+          </p>
+        </Section>
+
+        <Section title="9. Your rights under GDPR">
+          <p>You have the following rights:</p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li><strong>Access:</strong> request a copy of all personal data we hold about you</li>
+            <li><strong>Rectification:</strong> correct inaccurate data (most fields are editable directly in your profile)</li>
+            <li><strong>Erasure ("right to be forgotten"):</strong> delete your account at any time via Settings → Delete Account</li>
+            <li><strong>Restriction:</strong> ask us to temporarily stop processing your data</li>
+            <li><strong>Portability:</strong> receive your data in a machine-readable format</li>
+            <li><strong>Objection:</strong> object to processing based on legitimate interests</li>
+            <li><strong>Withdraw consent:</strong> at any time, by changing settings or contacting us</li>
+            <li><strong>Complain:</strong> lodge a complaint with your local data protection authority</li>
+          </ul>
+          <p className="mt-2">
+            To exercise any of these rights, email <a href="mailto:privacy@shaadigpt.com" className="text-blue-600 dark:text-blue-400 underline">privacy@shaadigpt.com</a>. We will respond within 30 days.
+          </p>
+        </Section>
+
+        <Section title="10. Security">
+          <p>
+            We protect your data with industry-standard security measures including encrypted
+            transit (HTTPS/TLS), encrypted storage at rest, row-level security policies on the
+            database, and access controls limiting which engineers can view production data.
+          </p>
+          <p>
+            However, no system is 100% secure. If we ever experience a data breach affecting your
+            personal data, we will notify you and the relevant authorities within 72 hours, as
+            required by GDPR.
+          </p>
+        </Section>
+
+        <Section title="11. Children's privacy">
+          <p>
+            ShaadiGPT is intended only for users 18 years and older. We do not knowingly collect
+            data from children under 18. If you become aware that a child has provided us with
+            personal data, please contact us immediately and we will delete it.
+          </p>
+        </Section>
+
+        <Section title="12. Changes to this policy">
+          <p>
+            We may update this Privacy Policy from time to time. Significant changes will be
+            notified to you by email and in the app. The "Last updated" date at the top of this
+            document indicates when it was last revised.
+          </p>
+        </Section>
+
+        <Section title="13. Contact">
+          <p>
+            Questions about this policy or your data:<br />
+            <a href="mailto:privacy@shaadigpt.com" className="text-blue-600 dark:text-blue-400 underline">privacy@shaadigpt.com</a>
+          </p>
+        </Section>
+
+        <div className="border-t border-gray-200 dark:border-zinc-800 pt-6 mt-10 text-center">
+          <p className="text-xs text-gray-400">
+            This document was last updated on May 11, 2026 and is identified internally as {PRIVACY_VERSION}.
+          </p>
+        </div>
+      </article>
+    </div>
+  );
+};
+
+export default PrivacyView;
