@@ -4,11 +4,11 @@ import Sidebar from './Sidebar';
 import ProfileView from './ProfileView';
 import SettingsView from './SettingsView';
 import HelpCenter from './HelpCenter';
-import PlaceholderTab from './PlaceholderTab';
 import SearchView from './SearchView';
 import HistoryView from './HistoryView';
 import LikesView from './LikesView';
 import MatchesView from './MatchesView';
+import StandoutsView from './StandoutsView';
 import MatchCelebrationModal from './MatchCelebrationModal';
 import { subscribeToNewMatches } from '../lib/chatService';
 import { supabase } from '../lib/supabase';
@@ -16,12 +16,10 @@ import { IconMenu } from '../constants';
 import type { MatchCandidate } from '../types';
 
 // ============================================================================
-// Dashboard (Phase 5 batch 3 update)
+// Dashboard (Phase 5 final)
 //
-// MatchesView is now wired. The deep-link flow works:
-//   1. User likes someone, mutual match fires
-//   2. Celebration modal shows with "Send a Message" button
-//   3. Click → switches to Matches tab AND auto-opens that specific chat
+// All tabs are wired. No more placeholders. Standouts uses the daily-pick
+// cache. Likes / Matches / Search / History / Profile / Settings all real.
 // ============================================================================
 
 type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings' | 'help';
@@ -40,7 +38,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
   const [pendingMatchOpenId, setPendingMatchOpenId] = useState<string | null>(null);
   const [matchCelebration, setMatchCelebration] = useState<{ matchId: string; candidate: MatchCandidate } | null>(null);
 
-  // Global new-match subscription (works regardless of which tab is active)
+  // Global new-match subscription
   useEffect(() => {
     if (!session?.user.id) return;
     const myId = session.user.id;
@@ -92,7 +90,6 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
   }
 
   const handleTabChange = (tab: Tab) => {
-    // Clear deep-link when manually switching tabs (so MatchesView doesn't re-open old chat)
     if (tab !== 'matches') {
       setPendingMatchOpenId(null);
     }
@@ -148,14 +145,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode }) =
           {activeTab === 'history' && <HistoryView />}
           {activeTab === 'likes' && <LikesView />}
           {activeTab === 'matches' && <MatchesView initialMatchId={pendingMatchOpenId} />}
-          {activeTab === 'standouts' && (
-            <PlaceholderTab
-              title="Daily Standouts"
-              emoji="🌟"
-              comingIn="Phase 5 (Batch 4)"
-              description="A curated set of top picks in your area, refreshed daily."
-            />
-          )}
+          {activeTab === 'standouts' && <StandoutsView onNavigateToMatches={handleNavigateToMatches} />}
           {activeTab === 'profile' && <ProfileView />}
           {activeTab === 'settings' && (
             <SettingsView
