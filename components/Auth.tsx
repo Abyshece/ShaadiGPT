@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from './NotionUI';
 import { IconMail, IconGoogle, IconChevronRight, IconX, IconLock } from '../constants';
 import { supabase } from '../lib/supabase';
+import { recordSignupConsent } from '../lib/consentService';
 
 interface AuthProps {
   // Called when sign-in or signup OTP-send is initiated.
@@ -10,15 +11,21 @@ interface AuthProps {
   onSignupInitiated: (email: string) => void;
   onSignInSuccess: () => void;
   onClose?: () => void;
+  // Phase 6: navigate to legal pages from the signup form
+  onShowLegal?: (page: 'terms' | 'privacy') => void;
 }
 
-const Auth: React.FC<AuthProps> = ({ onSignupInitiated, onSignInSuccess, onClose }) => {
+const Auth: React.FC<AuthProps> = ({ onSignupInitiated, onSignInSuccess, onClose, onShowLegal }) => {
   const [mode, setMode] = useState<'MENU' | 'SIGNIN' | 'SIGNUP' | 'FORGOT'>('MENU');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Phase 6: consent state for signup
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
 
   const clearMessages = () => {
     setError(null);
@@ -72,8 +79,12 @@ const Auth: React.FC<AuthProps> = ({ onSignupInitiated, onSignInSuccess, onClose
       setError('Password must be at least 8 characters.');
       return;
     }
+    if (!agreedToTerms) {
+      setError('You must agree to the Terms and Privacy Policy to create an account.');
+      return;
+    }
     setIsLoading(true);
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
     });
@@ -82,6 +93,17 @@ const Auth: React.FC<AuthProps> = ({ onSignupInitiated, onSignInSuccess, onClose
       setError(signUpError.message);
       return;
     }
+
+    // Record consent — we have the new auth user's id even before email verification
+    if (signUpData?.user?.id) {
+      try {
+        await recordSignupConsent(signUpData.user.id, email, marketingOptIn);
+      } catch (e) {
+        // Best-effort — don't block signup if consent logging fails
+        console.warn('[Auth] consent logging failed:', e);
+      }
+    }
+
     // Supabase has emailed a 6-digit OTP. Hand off to email-verification screen.
     onSignupInitiated(email);
   };
@@ -274,10 +296,52 @@ const Auth: React.FC<AuthProps> = ({ onSignupInitiated, onSignInSuccess, onClose
               />
             </div>
 
+            {/* Phase 6: Required consent checkbox */}
+            <label className="flex items-start gap-2 cursor-pointer group mt-1">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer flex-shrink-0"
+              />
+              <span className="text-[11px] text-gray-600 dark:text-gray-400 leading-snug">
+                I agree to the{' '}
+                <button
+                  type="button"
+                  onClick={() => onShowLegal?.('terms')}
+                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                >
+                  Terms of Service
+                </button>
+                {' '}and{' '}
+                <button
+                  type="button"
+                  onClick={() => onShowLegal?.('privacy')}
+                  className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                >
+                  Privacy Policy
+                </button>
+                . I confirm I am 18 years or older.
+              </span>
+            </label>
+
+            {/* Phase 6: Optional marketing consent */}
+            <label className="flex items-start gap-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={marketingOptIn}
+                onChange={(e) => setMarketingOptIn(e.target.checked)}
+                className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer flex-shrink-0"
+              />
+              <span className="text-[11px] text-gray-500 dark:text-gray-500 leading-snug">
+                Send me occasional tips and news about ShaadiGPT. (Optional, you can unsubscribe anytime.)
+              </span>
+            </label>
+
             <Button
               onClick={() => {}}
               className="w-full h-9 justify-center mt-1 text-xs font-bold rounded-md"
-              disabled={isLoading}
+              disabled={isLoading || !agreedToTerms}
             >
               {isLoading ? 'Creating account…' : 'Create Account'}
             </Button>

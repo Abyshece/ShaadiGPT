@@ -52,6 +52,7 @@ const AppRouter: React.FC<{
       <Auth
         onSignupInitiated={(email) => setPendingSignupEmail(email)}
         onSignInSuccess={() => { /* AuthContext will pick up session */ }}
+        onShowLegal={(page) => setLegalPage(page)}
       />
     );
   }
