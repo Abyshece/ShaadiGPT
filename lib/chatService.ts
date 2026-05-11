@@ -120,11 +120,6 @@ export function subscribeToMatch(
   onNewMessage: (msg: Message) => void,
   onUpdate?: (msg: Message) => void  // for read_at flips
 ): () => void {
-export function subscribeToMatch(
-  matchId: string,
-  onNewMessage: (msg: Message) => void,
-  onUpdate?: (msg: Message) => void  // for read_at flips
-): () => void {
   // Unique suffix prevents reusing a still-joined channel after React
   // StrictMode double-mounts or tab re-renders.
   const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
