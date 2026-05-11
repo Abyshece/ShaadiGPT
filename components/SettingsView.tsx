@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { PageHeader, InfoSection, Button } from './NotionUI';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
-import { updateSettings, softDeleteAccount } from '../lib/profileService';
+import { updateSettings } from '../lib/profileService';
+import { deleteAccount } from '../lib/deleteAccountService';
 import {
   IconMoon, IconSun, IconUser, IconLogOut, IconChevronRight, IconTrash, IconX,
 } from '../constants';
@@ -58,14 +59,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ isDarkMode, onToggleDarkMod
     if (!session?.user.id) return;
     if (deleteConfirmationInput !== 'Delete') return;
     setDeleting(true);
-    const result = await softDeleteAccount(session.user.id);
+    const result = await deleteAccount({
+      reason: deleteReason || undefined,
+      confirmation: 'Delete',
+    });
     setDeleting(false);
-    if (result.error) {
+    if (!result.success) {
       showToast(`Couldn't delete: ${result.error}`, 'error');
       return;
     }
     setShowDeleteModal(false);
-    showToast('Account deleted', 'success');
+    showToast('Account deleted. Goodbye 👋', 'success');
+    // AuthContext picks up the session-cleared state and redirects to Auth
   };
 
   const SettingsToggle = ({
@@ -222,8 +227,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ isDarkMode, onToggleDarkMod
             ) : (
               <div className="space-y-6">
                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/30 p-4 rounded-lg text-sm text-red-800 dark:text-red-200">
-                  <p className="font-bold mb-1">Warning: This is irreversible.</p>
-                  <p>Your profile, photos, matches, and messages will be permanently removed.</p>
+                  <p className="font-bold mb-1">⚠ Warning: This action cannot be undone.</p>
+                  <p className="text-xs leading-relaxed">
+                    Your account, profile, photos, matches, messages, likes, and all other data will be permanently deleted.
+                    Anyone who matched with you will lose access to your conversations.
+                    You will need to sign up again from scratch if you want to use ShaadiGPT in the future.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">
