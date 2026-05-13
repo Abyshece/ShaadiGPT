@@ -195,6 +195,7 @@ export interface ProfileRow {
   settings_read_receipts: boolean;
   settings_push_notifs: boolean;
   settings_email_notifs: boolean;
+  settings_theme: string;
 
   // presence
   last_active_at: string;

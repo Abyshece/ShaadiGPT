@@ -18,6 +18,7 @@ export interface UserSettings {
   readReceipts: boolean;
   pushNotifs: boolean;
   emailNotifs: boolean;
+  theme: 'system' | 'light' | 'dark';
 }
 
 export interface UserProfile {

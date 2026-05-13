@@ -226,6 +226,7 @@ export function rowToSettings(row: ProfileRow): UserSettings {
     readReceipts: row.settings_read_receipts,
     pushNotifs: row.settings_push_notifs,
     emailNotifs: row.settings_email_notifs,
+    theme: (row.settings_theme as 'system' | 'light' | 'dark') ?? 'system',
   };
 }
 
@@ -236,6 +237,7 @@ export function settingsToRowUpdate(s: UserSettings): Partial<ProfileRow> {
     settings_read_receipts: s.readReceipts,
     settings_push_notifs: s.pushNotifs,
     settings_email_notifs: s.emailNotifs,
+    settings_theme: s.theme,
   };
 }
 
