@@ -10,30 +10,101 @@ import PrivacyView from './components/PrivacyView';
 import CookieBanner from './components/CookieBanner';
 
 // ============================================================================
-// App (Phase 6 Batch 1)
+// App (Phase 6 Batch 3)
 //
-// Adds legal-page routing (Terms/Privacy accessible anytime) and the cookie
-// consent banner.
+// Adds dark-mode persistence: theme is stored in profiles.settings_theme as
+// 'system' | 'light' | 'dark', applied on every load.
 //
-// Legal pages use a simple state flag rather than a router because we don't
-// have one set up yet. URL-based routing can come in a later polish pass.
+// Resolution order for the *effective* theme:
+//   1. If authed AND profile has settings_theme = 'dark' or 'light' → use it
+//   2. Else: OS preference via prefers-color-scheme media query
+//
+// The toggle in the sidebar cycles light → dark → system and persists.
 // ============================================================================
 
 type LegalPage = 'terms' | 'privacy' | null;
+type ThemeMode = 'system' | 'light' | 'dark';
+
+// Compute the actual boolean "is dark mode active right now" from a theme mode.
+function resolveIsDark(mode: ThemeMode): boolean {
+  if (mode === 'dark') return true;
+  if (mode === 'light') return false;
+  // mode === 'system' → ask the OS
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+}
 
 const AppRouter: React.FC<{
-  isDarkMode: boolean;
-  onToggleDarkMode: () => void;
   legalPage: LegalPage;
   setLegalPage: (p: LegalPage) => void;
-}> = ({ isDarkMode, onToggleDarkMode, legalPage, setLegalPage }) => {
+}> = ({ legalPage, setLegalPage }) => {
   const {
-    session, profileRow, loading, profileLoading, profileError, profileMissing,
-    retryLoadProfile, healMissingProfile, signOut,
+    session, profileRow, profile, loading, profileLoading, profileError, profileMissing,
+    retryLoadProfile, healMissingProfile, signOut, refreshProfile,
   } = useAuth();
   const [pendingSignupEmail, setPendingSignupEmail] = useState<string | null>(null);
 
-  // ---- Legal pages always take precedence over everything else ----
+  // ---- Theme state ----
+  // Initialise from localStorage as a fast path (so the screen doesn't flash light
+  // briefly on a hard refresh), then sync from profile once it loads.
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'system';
+    const cached = (localStorage.getItem('shaadigpt_theme_mode') as ThemeMode | null);
+    return cached === 'light' || cached === 'dark' || cached === 'system' ? cached : 'system';
+  });
+
+  // When profile loads, sync its theme into state (overriding the cached value)
+  useEffect(() => {
+    // We access settings_theme via the raw row because the typed UserSettings
+    // includes it (see profileMapping.ts patch).
+    const rowTheme = (profileRow as { settings_theme?: string } | null)?.settings_theme;
+    if (rowTheme === 'light' || rowTheme === 'dark' || rowTheme === 'system') {
+      setThemeMode(rowTheme);
+      localStorage.setItem('shaadigpt_theme_mode', rowTheme);
+    }
+  }, [profileRow]);
+
+  const isDarkMode = resolveIsDark(themeMode);
+
+  // Apply the dark class to <html> whenever isDarkMode flips
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, [isDarkMode]);
+
+  // Listen for OS preference changes (only matters when mode is 'system')
+  useEffect(() => {
+    if (themeMode !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => {
+      // Force a re-render by toggling — resolveIsDark will re-read the media query
+      setThemeMode('system');
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [themeMode]);
+
+  // ---- Theme toggle / setter that persists to DB ----
+  const setTheme = async (newMode: ThemeMode) => {
+    setThemeMode(newMode);
+    localStorage.setItem('shaadigpt_theme_mode', newMode);
+    if (session?.user.id) {
+      // Lazy import to avoid circular dependency at app boot
+      const { supabase } = await import('./lib/supabase');
+      await supabase
+        .from('profiles')
+        .update({ settings_theme: newMode })
+        .eq('id', session.user.id);
+      await refreshProfile();
+    }
+  };
+
+  // ---- Legacy "toggle" handler — cycles light → dark → system ----
+  const handleToggleDarkMode = () => {
+    const next: ThemeMode = themeMode === 'light' ? 'dark' : themeMode === 'dark' ? 'system' : 'light';
+    setTheme(next);
+  };
+
+  // ---- Legal pages take precedence over everything ----
   if (legalPage === 'terms') {
     return <TermsView onBack={() => setLegalPage(null)} />;
   }
@@ -89,18 +160,20 @@ const AppRouter: React.FC<{
   }
 
   // 8. Main app
-  return <Dashboard isDarkMode={isDarkMode} onToggleDarkMode={onToggleDarkMode} />;
+  return (
+    <Dashboard
+      isDarkMode={isDarkMode}
+      onToggleDarkMode={handleToggleDarkMode}
+      themeMode={themeMode}
+      onSetTheme={setTheme}
+    />
+  );
 };
 
 const App: React.FC = () => {
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-  });
-
   const [legalPage, setLegalPage] = useState<LegalPage>(null);
 
-  // Listen for hash-based routing as a fallback (e.g. linked from emails)
+  // Hash-based routing fallback (e.g. for email links to #terms or #privacy)
   useEffect(() => {
     const handleHash = () => {
       const hash = window.location.hash.replace('#', '');
@@ -112,25 +185,15 @@ const App: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', isDarkMode);
-  }, [isDarkMode]);
-
   return (
     <ToastProvider>
       <AuthProvider>
-        <div className={isDarkMode ? 'dark' : ''}>
-          <div className="min-h-screen bg-white dark:bg-[#191919] text-gray-900 dark:text-gray-100 selection:bg-blue-100 dark:selection:bg-blue-900 transition-colors duration-200">
-            <AppRouter
-              isDarkMode={isDarkMode}
-              onToggleDarkMode={() => setIsDarkMode((v) => !v)}
-              legalPage={legalPage}
-              setLegalPage={setLegalPage}
-            />
-
-            {/* Cookie banner shown over everything until user consents */}
-            <CookieBanner onNavigateToPrivacy={() => setLegalPage('privacy')} />
-          </div>
+        <div className="min-h-screen bg-white dark:bg-[#191919] text-gray-900 dark:text-gray-100 selection:bg-blue-100 dark:selection:bg-blue-900 transition-colors duration-200">
+          <AppRouter
+            legalPage={legalPage}
+            setLegalPage={setLegalPage}
+          />
+          <CookieBanner onNavigateToPrivacy={() => setLegalPage('privacy')} />
         </div>
       </AuthProvider>
     </ToastProvider>
@@ -178,12 +241,8 @@ const ProfileErrorScreen: React.FC<{
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#191919] p-6">
       <div className="max-w-md w-full bg-white dark:bg-zinc-900 border border-red-200 dark:border-red-900/40 rounded-xl shadow-sm p-6 text-center">
-        <div className="w-12 h-12 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center text-2xl">
-          ⚠️
-        </div>
-        <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-          Couldn't load your profile
-        </h1>
+        <div className="w-12 h-12 mx-auto mb-4 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center text-2xl">⚠️</div>
+        <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Couldn't load your profile</h1>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">{error}</p>
         {hint && <p className="text-xs text-gray-500 dark:text-gray-500 mb-4 italic">{hint}</p>}
         <div className="flex gap-2 mt-5">
@@ -201,9 +260,7 @@ const ProfileErrorScreen: React.FC<{
             {retrying ? 'Retrying…' : 'Try again'}
           </button>
         </div>
-        <p className="text-[11px] text-gray-400 mt-4">
-          Open DevTools → Console for more detail.
-        </p>
+        <p className="text-[11px] text-gray-400 mt-4">Open DevTools → Console for more detail.</p>
       </div>
     </div>
   );
@@ -232,12 +289,8 @@ const ProfileMissingScreen: React.FC<{
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#191919] p-6">
       <div className="max-w-md w-full bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm p-6 text-center">
-        <div className="w-12 h-12 mx-auto mb-4 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 rounded-full flex items-center justify-center text-2xl">
-          👋
-        </div>
-        <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-          Let's finish setting you up
-        </h1>
+        <div className="w-12 h-12 mx-auto mb-4 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400 rounded-full flex items-center justify-center text-2xl">👋</div>
+        <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Let's finish setting you up</h1>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-5">
           Your account is verified but a profile hasn't been created yet. Click below to create one and start onboarding.
         </p>

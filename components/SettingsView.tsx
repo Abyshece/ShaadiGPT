@@ -12,6 +12,8 @@ import type { UserSettings } from '../types';
 interface SettingsViewProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  themeMode?: 'system' | 'light' | 'dark';        // current theme mode setting
+  onSetTheme?: (mode: 'system' | 'light' | 'dark') => void;  // set + persist
   onNavigate?: (tab: string) => void;
 }
 
@@ -23,7 +25,13 @@ const DELETE_REASONS = [
   'Other',
 ];
 
-const SettingsView: React.FC<SettingsViewProps> = ({ isDarkMode, onToggleDarkMode, onNavigate }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({
+  isDarkMode,
+  onToggleDarkMode,
+  themeMode = 'system',
+  onSetTheme,
+  onNavigate,
+}) => {
   const { profile, settings, session, signOut, refreshProfile } = useAuth();
   const { showToast } = useToast();
 
@@ -133,18 +141,36 @@ const SettingsView: React.FC<SettingsViewProps> = ({ isDarkMode, onToggleDarkMod
           </InfoSection>
 
           <InfoSection title="Appearance">
-            <div
-              className="flex items-center justify-between py-3 px-2 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-zinc-800/30 transition-colors"
-              onClick={onToggleDarkMode}
-            >
-              <div className="flex-1">
-                <h4 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                  {isDarkMode ? <IconMoon /> : <IconSun />} {isDarkMode ? 'Dark Mode' : 'Light Mode'}
-                </h4>
+            <div className="py-2 px-2">
+              <h4 className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2 mb-3">
+                {isDarkMode ? <IconMoon /> : <IconSun />} Theme
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                {(['light', 'dark', 'system'] as const).map((mode) => {
+                  const isSelected = themeMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => onSetTheme?.(mode) ?? onToggleDarkMode()}
+                      className={`py-2.5 px-2 rounded-lg border text-xs font-medium capitalize transition-colors ${
+                        isSelected
+                          ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700'
+                          : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-zinc-700 hover:border-gray-300 dark:hover:border-zinc-600'
+                      }`}
+                    >
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="text-lg">
+                          {mode === 'light' ? '☀️' : mode === 'dark' ? '🌙' : '💻'}
+                        </span>
+                        <span>{mode}</span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              <div className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${isDarkMode ? 'bg-black border border-white/20' : 'bg-gray-300'}`}>
-                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${isDarkMode ? 'left-6' : 'left-1'}`} />
-              </div>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2 px-1">
+                {themeMode === 'system' ? 'Follows your device setting.' : `Always ${themeMode}, on every device.`}
+              </p>
             </div>
           </InfoSection>
 
