@@ -22,6 +22,7 @@ export interface PlatformStats {
   total_likes: number;
   super_likes: number;
   pending_reports: number;
+  pending_verifications: number;
   signups_today: number;
   signups_week: number;
   matches_today: number;

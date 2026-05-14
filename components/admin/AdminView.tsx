@@ -8,6 +8,7 @@ import {
 import type { PlatformStats, ReportRow, AdminAuditRow } from '../../lib/adminService';
 import AdminUsersTab from './AdminUsersTab';
 import AdminReportsTab from './AdminReportsTab';
+import AdminVerificationsTab from './AdminVerificationsTab';
 
 // ============================================================================
 // AdminView
@@ -22,7 +23,7 @@ import AdminReportsTab from './AdminReportsTab';
 // denied" and the DB RPCs will refuse all admin actions anyway.
 // ============================================================================
 
-type AdminTab = 'dashboard' | 'reports' | 'users';
+type AdminTab = 'dashboard' | 'reports' | 'verifications' | 'users';
 
 const AdminView: React.FC = () => {
   const { profile } = useAuth();
@@ -88,7 +89,7 @@ const AdminView: React.FC = () => {
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-zinc-800">
-          {(['dashboard', 'reports', 'users'] as const).map((t) => (
+          {(['dashboard', 'reports', 'verifications', 'users'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -114,6 +115,7 @@ const AdminView: React.FC = () => {
           />
         )}
         {tab === 'reports' && <AdminReportsTab onAuditUpdate={loadDashboard} />}
+        {tab === 'verifications' && <AdminVerificationsTab onAuditUpdate={loadDashboard} />}
         {tab === 'users' && <AdminUsersTab onAuditUpdate={loadDashboard} />}
       </div>
     </div>
@@ -178,6 +180,22 @@ const DashboardTab: React.FC<{
             label="Pending reports"
             value={stats.pending_reports}
             alert={stats.pending_reports > 0}
+          />
+        </div>
+      </div>
+
+      <div>
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Moderation queue</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard
+            label="Pending reports"
+            value={stats.pending_reports}
+            alert={stats.pending_reports > 0}
+          />
+          <StatCard
+            label="Pending verifications"
+            value={stats.pending_verifications ?? 0}
+            alert={(stats.pending_verifications ?? 0) > 0}
           />
         </div>
       </div>

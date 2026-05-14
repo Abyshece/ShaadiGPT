@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
 import { updateSettings } from '../lib/profileService';
 import { deleteAccount } from '../lib/deleteAccountService';
+import PushNotifSetup from './PushNotifSetup';
 import {
   IconMoon, IconSun, IconUser, IconLogOut, IconChevronRight, IconTrash, IconX,
 } from '../constants';
@@ -136,7 +137,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </InfoSection>
 
           <InfoSection title="Notifications">
-            <SettingsToggle label="Push Notifications" checked={settings.pushNotifs} onChange={(v) => updateOne('pushNotifs', v)} />
+            <PushNotifSetup />
+            <SettingsToggle
+              label="Push Notifications enabled"
+              description="Master switch. Disable to stop all push notifications across all your devices."
+              checked={settings.pushNotifs}
+              onChange={(v) => updateOne('pushNotifs', v)}
+            />
             <SettingsToggle label="Email Digests" description="Weekly summary of profile activity." checked={settings.emailNotifs} onChange={(v) => updateOne('emailNotifs', v)} />
           </InfoSection>
 
