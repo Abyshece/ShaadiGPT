@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
 import { runSearch } from '../lib/matchingService';
@@ -76,6 +76,33 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [matchCelebration, setMatchCelebration] = useState<{ matchId: string; candidate: MatchCandidate } | null>(null);
 
+  // Track whether we've already consumed the pending prompt this session so we
+  // don't re-trigger on every re-render of SearchView.
+  const pendingPromptConsumed = useRef(false);
+
+  // On mount: if the user landed here via the landing-page flow, they have a
+  // prompt stashed in sessionStorage. Read it, pre-fill the input, and trigger
+  // an automatic search so they see results immediately. Only do this once.
+  useEffect(() => {
+    if (pendingPromptConsumed.current) return;
+    const pending = sessionStorage.getItem('shaadigpt_pending_prompt');
+    if (pending && pending.trim()) {
+      pendingPromptConsumed.current = true;
+      sessionStorage.removeItem('shaadigpt_pending_prompt');
+      setPrompt(pending);
+      // Defer the auto-search slightly so the input renders + auth state stabilises
+      setTimeout(() => {
+        autoRunSearchRef.current?.(pending);
+      }, 400);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Ref-based handle so the useEffect above can call into handleSearch without
+  // creating a stale-closure problem (handleSearch is recreated on every render
+  // due to useCallback deps, but the ref always points to the current one).
+  const autoRunSearchRef = useRef<((p: string) => void) | null>(null);
+
   if (!profile || !session?.user.id) {
     return <div className="p-12 text-center text-gray-400">Loading…</div>;
   }
@@ -85,8 +112,9 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
   const isLockedOut = verification.isLockedOut;
   const activeFilterCount = countActiveFilters(filters);
 
-  const handleSearch = useCallback(async () => {
-    if (!prompt.trim() && activeFilterCount === 0) {
+  const handleSearch = useCallback(async (overridePrompt?: string) => {
+    const effectivePrompt = (overridePrompt ?? prompt).trim();
+    if (!effectivePrompt && activeFilterCount === 0) {
       showToast('Type a prompt or set some filters', 'info');
       return;
     }
@@ -106,7 +134,7 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
       const output = await runSearch({
         searcherId: session.user.id,
         searcher: profile,
-        prompt,
+        prompt: effectivePrompt,
         filters,
       });
 
@@ -115,7 +143,7 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
 
       await incrementSearchCount(session.user.id, profile);
 
-      saveSearch(session.user.id, prompt, filters, output.candidates, output.poolSize)
+      saveSearch(session.user.id, effectivePrompt, filters, output.candidates, output.poolSize)
         .catch((e) => console.warn('[SearchView] saveSearch failed:', e));
 
       await refreshProfile();
@@ -132,6 +160,11 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
       setSearching(false);
     }
   }, [prompt, filters, profile, session.user.id, allowance.allowed, isLockedOut, activeFilterCount, refreshProfile, showToast]);
+
+  // Keep the ref pointed at the latest handleSearch so the mount-effect can call it
+  useEffect(() => {
+    autoRunSearchRef.current = handleSearch;
+  }, [handleSearch]);
 
   const handleExampleClick = (ex: string) => setPrompt(ex);
 
@@ -218,7 +251,7 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
           <div className="flex items-center justify-between bg-gray-50 dark:bg-zinc-800/50 px-4 py-3 border-t border-gray-100 dark:border-zinc-800">
             <span className="text-[11px] text-gray-400">⌘ + Enter to search</span>
             <button
-              onClick={handleSearch}
+              onClick={() => handleSearch()}
               disabled={searching || isLockedOut}
               className="bg-black dark:bg-white text-white dark:text-black px-5 py-2 rounded-lg text-sm font-bold shadow-sm hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
             >

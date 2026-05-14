@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './lib/AuthContext';
 import { ToastProvider, useToast } from './lib/useToast';
 import Auth from './components/Auth';
 import EmailVerification from './components/EmailVerification';
+import LandingView from './components/LandingView';
 import OnboardingShell from './components/onboarding/OnboardingShell';
 import Dashboard from './components/Dashboard';
 import TermsView from './components/TermsView';
@@ -117,12 +118,15 @@ const AppRouter: React.FC<{
     return <FullScreenLoader label="Loading…" />;
   }
 
-  // 2. Not signed in
+  // 2. Not signed in — show public landing page (search dashboard preview).
+  //    LandingView pops its own Auth modal when the user clicks Search or Sign In.
+  //    On signup initiation it bubbles the email up so we can show EmailVerification
+  //    in case 3 below. The user's prompt gets stashed in sessionStorage by
+  //    LandingView and picked up by SearchView after auth completes.
   if (!session && !pendingSignupEmail) {
     return (
-      <Auth
+      <LandingView
         onSignupInitiated={(email) => setPendingSignupEmail(email)}
-        onSignInSuccess={() => { /* AuthContext will pick up session */ }}
         onShowLegal={(page) => setLegalPage(page)}
       />
     );
