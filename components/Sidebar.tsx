@@ -1,11 +1,12 @@
 import React from 'react';
 import { useAuth } from '../lib/AuthContext';
+import { isAdminEmail } from '../lib/adminService';
 import {
   IconSearch, IconHistory, IconHeart, IconMessageCircle, IconStar, IconUser,
   IconX, IconZap, IconLogOut, IconSettings, IconChevronLeft, IconChevronRight,
 } from '../constants';
 
-type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings';
+type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings' | 'admin';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { profile, signOut } = useAuth();
   const tier = profile?.subscriptionTier || 'FREE';
+  const isAdmin = isAdminEmail(profile?.email);
 
   const SidebarItem = ({
     icon, label, id,
@@ -79,6 +81,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         <SidebarItem icon={<IconStar />} label="Standouts" id="standouts" />
         <SidebarItem icon={<IconUser />} label="My Profile" id="profile" />
         <SidebarItem icon={<IconSettings />} label="Settings" id="settings" />
+        {isAdmin && (
+          <>
+            <div className={`my-3 mx-3 border-t border-gray-200 dark:border-zinc-800 ${isCollapsed ? '' : ''}`} />
+            <SidebarItem
+              icon={<span className="text-base">🛡️</span>}
+              label="Admin"
+              id="admin"
+            />
+          </>
+        )}
       </nav>
 
       <div className="mt-auto pt-4 pb-4 px-3 border-t border-gray-200 dark:border-zinc-800 bg-white dark:bg-[#191919]">

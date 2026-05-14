@@ -30,8 +30,9 @@ const StandoutsView = lazy(() => import('./StandoutsView'));
 const ProfileView = lazy(() => import('./ProfileView'));
 const SettingsView = lazy(() => import('./SettingsView'));
 const HelpCenter = lazy(() => import('./HelpCenter'));
+const AdminView = lazy(() => import('./admin/AdminView'));
 
-type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings' | 'help';
+type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings' | 'help' | 'admin';
 
 interface DashboardProps {
   isDarkMode: boolean;
@@ -156,6 +157,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
                 : activeTab === 'matches' ? 'Matches'
                 : activeTab === 'standouts' ? 'Standouts'
                 : activeTab === 'help' ? 'Help Center'
+                : activeTab === 'admin' ? 'Admin'
                 : 'Settings'}
             </span>
           </div>
@@ -179,6 +181,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
               />
             )}
             {activeTab === 'help' && <HelpCenter />}
+            {activeTab === 'admin' && <AdminView />}
           </Suspense>
         </div>
       </main>
