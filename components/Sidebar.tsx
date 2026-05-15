@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { isAdminEmail } from '../lib/adminService';
+import VerificationRequestModal from './VerificationRequestModal';
 import {
   IconSearch, IconHistory, IconHeart, IconMessageCircle, IconStar, IconUser,
   IconX, IconZap, IconLogOut, IconSettings, IconChevronLeft, IconChevronRight,
+  IconShield, IconClock,
 } from '../constants';
 
 type Tab = 'search' | 'history' | 'likes' | 'matches' | 'standouts' | 'profile' | 'settings' | 'admin';
@@ -25,7 +27,9 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { profile, signOut } = useAuth();
   const tier = profile?.subscriptionTier || 'FREE';
+  const isPro = tier === 'PRO';
   const isAdmin = isAdminEmail(profile?.email);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const SidebarItem = ({
     icon, label, id,
@@ -102,11 +106,72 @@ const Sidebar: React.FC<SidebarProps> = ({
           {isCollapsed ? <IconChevronRight /> : <IconChevronLeft />}
         </button>
 
+        {/* GET VERIFIED TODAY — only shown if user is not verified */}
+        {profile && !profile.isVerified && (
+          <div
+            onClick={() => {
+              if (profile.verificationStatus !== 'pending') setShowVerifyModal(true);
+            }}
+            className={`rounded-lg border transition-all duration-300 mb-3 overflow-hidden group ${
+              profile.verificationStatus === 'pending'
+                ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800 cursor-default'
+                : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/20 cursor-pointer'
+            } ${isCollapsed ? 'p-2 flex justify-center items-center' : 'px-3 py-3'}`}
+            title={isCollapsed ? (profile.verificationStatus === 'pending' ? 'Verification pending' : 'Get verified') : undefined}
+          >
+            {!isCollapsed ? (
+              <div className={`flex items-center gap-2 font-bold text-xs uppercase tracking-wide ${
+                profile.verificationStatus === 'pending'
+                  ? 'text-yellow-700 dark:text-yellow-400'
+                  : 'text-green-700 dark:text-green-400'
+              }`}>
+                {profile.verificationStatus === 'pending' ? (
+                  <><IconClock /> Verification pending</>
+                ) : (
+                  <><IconShield /> Get verified today</>
+                )}
+              </div>
+            ) : (
+              <div className={profile.verificationStatus === 'pending'
+                ? 'text-yellow-600 dark:text-yellow-400'
+                : 'text-green-600 dark:text-green-400'
+              }>
+                {profile.verificationStatus === 'pending' ? <IconClock /> : <IconShield />}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* GET MATCHGPT+ — only shown for FREE users */}
+        {!isPro && (
+          <div
+            onClick={() => {
+              // No upgrade modal wired up yet; this is a placeholder click handler.
+              // When Razorpay is integrated, replace with: setShowUpgradeModal(true).
+              alert('Razorpay integration coming soon. ShaadiGPT+ will unlock unlimited searches, super-likes, and standouts.');
+            }}
+            className={`rounded-lg border cursor-pointer transition-all duration-300 mb-3 overflow-hidden group bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/10 dark:to-indigo-900/10 border-blue-100 dark:border-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/20 ${
+              isCollapsed ? 'p-2 flex justify-center items-center' : 'px-3 py-3'
+            }`}
+            title={isCollapsed ? 'Get ShaadiGPT+' : undefined}
+          >
+            {!isCollapsed ? (
+              <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                <IconZap /> Get ShaadiGPT+
+              </div>
+            ) : (
+              <div className="text-blue-600 dark:text-blue-400">
+                <IconZap />
+              </div>
+            )}
+          </div>
+        )}
+
         <div className={`flex items-center ${isCollapsed ? 'justify-center flex-col gap-2' : 'gap-3'} mt-2`}>
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">{profile?.name || 'You'}</div>
-              <div className="text-xs text-gray-400 truncate">{tier === 'FREE' ? 'Free plan' : 'Pro plan'}</div>
+              <div className="text-xs text-gray-400 truncate">{tier === 'FREE' ? 'Basic' : 'Pro'}</div>
             </div>
           )}
           <button
@@ -118,6 +183,11 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Verification modal — opened from the GET VERIFIED TODAY box */}
+      {showVerifyModal && (
+        <VerificationRequestModal onClose={() => setShowVerifyModal(false)} />
+      )}
     </aside>
   );
 };

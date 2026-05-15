@@ -31,11 +31,13 @@ const DEFAULT_FILTERS: FilterOptions = {
 };
 
 const EXAMPLE_PROMPTS = [
-  'Ambitious lawyer in Mumbai who loves hiking',
-  'Vegetarian, spiritual, wants marriage in 1-2 years',
-  'Creative artist who travels often and reads books',
-  'Athletic engineer with secure attachment style',
-  'Loves cooking, family-oriented, in Bangalore',
+  'Find a match near me',
+  'Show me all online matches',
+  'Find coffee lovers',
+  'Hiking partners',
+  'Find an ambitious introvert',
+  'Most compatible matches',
+  'Looking for friends',
 ];
 
 function countActiveFilters(f: FilterOptions): number {
@@ -179,13 +181,25 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
       <div className="max-w-6xl mx-auto py-8 px-6 lg:px-12">
         {isLockedOut && <VerificationBanner verification={verification} />}
 
-        {/* Search header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">Find Your Match</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Describe who you're looking for. Our algorithm scores every profile across 70+ attributes.
-          </p>
-        </div>
+        {/* Search header — sparkle hero on landing, simple title once searched */}
+        {!hasSearched ? (
+          <div className="text-center mb-10 animate-fade-in">
+            <div className="text-6xl mb-4">✨</div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">
+              Find your meaningful match
+            </h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Search by personality, interests, or vibe.
+            </p>
+          </div>
+        ) : (
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">Find Your Match</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Describe who you're looking for. Our algorithm scores every profile across 70+ attributes.
+            </p>
+          </div>
+        )}
 
         {/* Daily-limit pill + filter button */}
         <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
@@ -267,16 +281,18 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
           </div>
         </div>
 
-        {/* Example prompts */}
+        {/* Trending Near You — landing state only */}
         {!hasSearched && (
-          <div className="mb-10">
-            <p className="text-xs uppercase font-bold text-gray-400 tracking-widest mb-3">Try one of these</p>
-            <div className="flex flex-wrap gap-2">
+          <div className="mt-8 mb-10 animate-fade-in">
+            <p className="text-center text-[11px] uppercase font-bold text-gray-400 tracking-widest mb-4">
+              Trending near you
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
               {EXAMPLE_PROMPTS.map((ex) => (
                 <button
                   key={ex}
                   onClick={() => handleExampleClick(ex)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-200 dark:border-zinc-700 transition-colors"
+                  className="px-5 py-2 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-zinc-500 hover:text-gray-900 dark:hover:text-white hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm"
                 >
                   {ex}
                 </button>
