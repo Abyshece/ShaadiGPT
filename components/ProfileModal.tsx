@@ -49,12 +49,13 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden border border-gray-200 dark:border-zinc-800 relative grid grid-cols-1 lg:grid-cols-2"
+        className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-y-auto lg:overflow-hidden border border-gray-200 dark:border-zinc-800 relative flex flex-col lg:grid lg:grid-cols-2"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-30 p-2 rounded-full bg-white/90 dark:bg-zinc-800/90 text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-zinc-700 shadow-sm"
+          className="absolute top-3 right-3 z-30 p-2 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 shadow-md lg:bg-white/90 lg:dark:bg-zinc-800/90 lg:text-gray-700 lg:dark:text-gray-200 lg:hover:bg-white lg:dark:hover:bg-zinc-700"
+          aria-label="Close"
         >
           <IconX />
         </button>
@@ -64,24 +65,25 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="absolute top-3 left-3 lg:left-[calc(50%+12px)] z-30">
             <button
               onClick={(e) => { e.stopPropagation(); setShowOverflowMenu((v) => !v); }}
-              className="p-2 rounded-full bg-white/90 dark:bg-zinc-800/90 text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-zinc-700 shadow-sm"
+              className="p-2 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 shadow-md lg:bg-white/90 lg:dark:bg-zinc-800/90 lg:text-gray-700 lg:dark:text-gray-200 lg:hover:bg-white lg:dark:hover:bg-zinc-700"
+              aria-label="More options"
             >
               <span className="block w-5 h-5 leading-5 text-center font-bold">⋯</span>
             </button>
             {showOverflowMenu && (
               <div
-                className="absolute top-12 left-0 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-xl overflow-hidden min-w-[160px] py-1"
+                className="absolute top-12 left-0 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-2xl overflow-hidden min-w-[160px] py-1"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   onClick={() => { setShowOverflowMenu(false); setShowBlockReport('report'); }}
-                  className="w-full px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+                  className="w-full px-3 py-2.5 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-zinc-800 flex items-center gap-2"
                 >
                   🚩 Report
                 </button>
                 <button
                   onClick={() => { setShowOverflowMenu(false); setShowBlockReport('block'); }}
-                  className="w-full px-3 py-2 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
+                  className="w-full px-3 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2"
                 >
                   🚫 Block user
                 </button>
@@ -91,7 +93,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         )}
 
         {/* LEFT — photos */}
-        <div className="relative aspect-[3/4] lg:aspect-auto lg:h-full bg-gray-100 dark:bg-zinc-800 overflow-hidden">
+        <div className="relative aspect-[3/4] max-h-[55vh] lg:max-h-none lg:aspect-auto lg:h-full bg-gray-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
           {photos.length > 0 ? (
             <>
               <img
@@ -133,7 +135,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
           {/* Like button overlay on photo (mobile/desktop both visible) */}
           {showLikeButton && (
-            <div className="absolute bottom-4 right-4 z-20">
+            <div className="absolute bottom-6 right-4 z-20">
               <LikeButton
                 candidate={candidate}
                 size="lg"
@@ -146,9 +148,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
         </div>
 
         {/* RIGHT — content */}
-        <div className="overflow-y-auto p-6">
+        <div className="lg:overflow-y-auto p-6">
           {/* Header */}
-          <div className="mb-4 pl-12">
+          <div className={`mb-4 ${showLikeButton ? 'pl-10 lg:pl-12' : ''} pr-10 lg:pr-12`}>
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
                 {candidate.name}{candidate.age ? `, ${candidate.age}` : ''}
