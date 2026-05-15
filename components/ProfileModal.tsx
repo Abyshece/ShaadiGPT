@@ -54,7 +54,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
       >
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 z-30 p-2 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 shadow-md lg:bg-white/90 lg:dark:bg-zinc-800/90 lg:text-gray-700 lg:dark:text-gray-200 lg:hover:bg-white lg:dark:hover:bg-zinc-700"
+          className="absolute top-5 right-5 lg:top-3 lg:right-3 z-30 p-2 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 shadow-md lg:bg-white/90 lg:dark:bg-zinc-800/90 lg:text-gray-700 lg:dark:text-gray-200 lg:hover:bg-white lg:dark:hover:bg-zinc-700"
           aria-label="Close"
         >
           <IconX />
@@ -62,7 +62,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
         {/* Overflow menu (top-left of right pane) */}
         {showLikeButton && (
-          <div className="absolute top-3 left-3 lg:left-[calc(50%+12px)] z-30">
+          <div className="absolute top-5 left-5 lg:top-3 lg:left-3 lg:left-[calc(50%+12px)] z-30">
             <button
               onClick={(e) => { e.stopPropagation(); setShowOverflowMenu((v) => !v); }}
               className="p-2 rounded-full bg-black/40 backdrop-blur-sm text-white hover:bg-black/60 shadow-md lg:bg-white/90 lg:dark:bg-zinc-800/90 lg:text-gray-700 lg:dark:text-gray-200 lg:hover:bg-white lg:dark:hover:bg-zinc-700"
@@ -92,8 +92,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
         )}
 
-        {/* LEFT — photos */}
-        <div className="relative aspect-[3/4] max-h-[55vh] lg:max-h-none lg:aspect-auto lg:h-full bg-gray-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
+        {/* LEFT — photos.
+            On mobile, we wrap in an outer container with padding so the photo
+            sits in a clean inset with rounded corners, and the close/menu
+            buttons have proper breathing room from the modal edge. */}
+        <div className="p-3 pb-0 lg:p-0 lg:h-full flex-shrink-0">
+          <div className="relative aspect-[3/4] max-h-[55vh] lg:max-h-none lg:aspect-auto lg:h-full bg-gray-100 dark:bg-zinc-800 overflow-hidden rounded-xl lg:rounded-none">
           {photos.length > 0 ? (
             <>
               <img
@@ -145,6 +149,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
               />
             </div>
           )}
+          </div>
         </div>
 
         {/* RIGHT — content */}
