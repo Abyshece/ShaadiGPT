@@ -94,8 +94,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
 
         {/* LEFT — photos. Edge-to-edge on mobile (no horizontal padding); the
             modal's rounded-xl corners clip the top of the photo. Bio below has
-            its own p-6 padding for content. Desktop layout (lg:) unchanged. */}
-        <div className="relative aspect-[3/4] max-h-[55vh] lg:max-h-none lg:aspect-auto lg:h-full bg-gray-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
+            its own p-6 padding for content. Desktop layout (lg:) unchanged.
+
+            NOTE: w-full is critical here. Without it, `aspect-[3/4]` combined
+            with `max-h-[55vh]` causes CSS to shrink the width to maintain ratio
+            when max-height clamps, leaving white space on the right. */}
+        <div className="relative w-full aspect-[3/4] max-h-[55vh] lg:max-h-none lg:aspect-auto lg:h-full bg-gray-100 dark:bg-zinc-800 overflow-hidden flex-shrink-0">
           {photos.length > 0 ? (
             <>
               <img
