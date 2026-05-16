@@ -10,7 +10,7 @@ import VerificationBanner from './VerificationBanner';
 import UpgradeModal from './UpgradeModal';
 import FilterPanel from './FilterPanel';
 import MatchCelebrationModal from './MatchCelebrationModal';
-import { IconZap, IconX } from '../constants';
+import { IconZap, IconX, IconCheck } from '../constants';
 import type { MatchCandidate, FilterOptions } from '../types';
 
 // ============================================================================
@@ -269,6 +269,29 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
           </div>
         )}
 
+        {/* Quick filter suggestion pills — only shown post-search to refine results.
+            Toggles common filters (Online, Verified, Has Instagram, Non-Smoker).
+            Active ones disappear from this row and reappear as removable chips below the pill. */}
+        {hasSearched && (
+          <div className="flex flex-wrap justify-center gap-2 mb-3 animate-fade-in">
+            {[
+              { key: 'isOnline', label: 'Online Now', icon: <div className="w-2 h-2 bg-green-500 rounded-full" />, active: filters.isOnline },
+              { key: 'isVerified', label: 'Verified Only', icon: <IconCheck className="w-3 h-3" />, active: filters.isVerified },
+              { key: 'hasInstagram', label: 'Has Instagram', icon: <span>📷</span>, active: filters.hasInstagram },
+              { key: 'isPremium', label: 'Pro Users', icon: <IconZap />, active: filters.isPremium },
+            ].filter((s) => !s.active).map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setFilters((prev) => ({ ...prev, [s.key]: true }))}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md border border-gray-200 dark:border-zinc-700 rounded-full shadow-sm hover:bg-gray-50 dark:hover:bg-zinc-700 transition-all text-xs font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap active:scale-95"
+              >
+                <span className="opacity-70 flex items-center [&>svg]:w-3 [&>svg]:h-3">{s.icon}</span>
+                {s.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Pill-shaped prompt input — filter button on left, textarea in middle, send on right.
             Inspired by the legacy MatchGPT search bar with rounded-[32px] container and soft drop shadow. */}
         <div className={`
@@ -367,6 +390,33 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
           )}
         </div>
 
+        {/* Active filter chips — show below pill when any filter is active, with X to clear each */}
+        {hasSearched && activeFilterCount > 0 && (
+          <div className="flex flex-wrap justify-center gap-1.5 mb-6 animate-fade-in">
+            {filters.isOnline && (
+              <FilterChip label="Online" onRemove={() => setFilters((p) => ({ ...p, isOnline: false }))} />
+            )}
+            {filters.isVerified && (
+              <FilterChip label="Verified" onRemove={() => setFilters((p) => ({ ...p, isVerified: false }))} />
+            )}
+            {filters.isPremium && (
+              <FilterChip label="Premium" onRemove={() => setFilters((p) => ({ ...p, isPremium: false }))} />
+            )}
+            {filters.hasInstagram && (
+              <FilterChip label="Has Instagram" onRemove={() => setFilters((p) => ({ ...p, hasInstagram: false }))} />
+            )}
+            {filters.hasLinkedin && (
+              <FilterChip label="Has LinkedIn" onRemove={() => setFilters((p) => ({ ...p, hasLinkedin: false }))} />
+            )}
+            <button
+              onClick={() => setFilters(DEFAULT_FILTERS)}
+              className="text-[10px] text-gray-400 hover:text-red-500 hover:underline ml-1 self-center"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
         {/* Trending Near You — landing state only */}
         {!hasSearched && (
           <div className="mt-8 mb-10 animate-fade-in">
@@ -408,10 +458,13 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-4">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Found <strong>{results.length}</strong> matches from a pool of <strong>{poolSize}</strong> eligible profiles
-                  </p>
+                <div className="flex items-center justify-center gap-3 mb-6">
+                  <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200 flex items-center gap-2">
+                    <span className="text-lg">✨</span> Results for you
+                  </h2>
+                  <span className="inline-flex items-center justify-center min-w-[24px] h-6 px-2 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 text-xs font-bold">
+                    {results.length}
+                  </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {results.map((c) => (
@@ -479,5 +532,20 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
     </div>
   );
 };
+
+// ----------------------------------------------------------------------------
+// FilterChip — small removable pill rendered below the prompt input when an
+// active filter is applied. Matches the legacy MatchGPT design (green pill).
+// ----------------------------------------------------------------------------
+const FilterChip: React.FC<{ label: string; onRemove: () => void }> = ({ label, onRemove }) => (
+  <button
+    onClick={onRemove}
+    className="px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-[11px] font-medium border border-green-100 dark:border-green-900/30 flex items-center gap-1 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors group"
+    title="Remove filter"
+  >
+    {label}
+    <span className="opacity-60 group-hover:opacity-100 text-[10px]">×</span>
+  </button>
+);
 
 export default SearchView;

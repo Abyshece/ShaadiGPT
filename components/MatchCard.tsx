@@ -1,14 +1,14 @@
-import React from 'react';
-import { IconCheck, IconZap } from '../constants';
+import React, { useState, useRef } from 'react';
+import { IconCheck, IconZap, IconHeart, IconX } from '../constants';
 import LikeButton from './LikeButton';
 import type { MatchCandidate } from '../types';
 
 // ============================================================================
-// MatchCard (Phase 5 update)
-//
-// Adds a LikeButton overlay in the bottom-right of the card. The whole card
-// is clickable to open the modal; the like button stops propagation so it
-// only fires the like.
+// MatchCard — restyled to match the legacy MatchGPT design:
+//   - Photo on top with carousel (left/right arrows on hover, swipe on mobile,
+//     dots indicator, online/offline status chip top-left, match% top-right)
+//   - Below photo: badges row (Verified, Pro), name + age, location
+//   - Bottom: X (pass) + Like button row, separated from content with border
 // ============================================================================
 
 interface MatchCardProps {
@@ -16,96 +16,159 @@ interface MatchCardProps {
   onClick: () => void;
   onMatched?: (matchId: string, candidate: MatchCandidate) => void;
   onLimitReached?: () => void;
+  onReject?: (id: string) => void;
   showLikeButton?: boolean;
 }
 
 const MatchCard: React.FC<MatchCardProps> = ({
-  candidate, onClick, onMatched, onLimitReached, showLikeButton = true,
+  candidate, onClick, onMatched, onLimitReached, onReject, showLikeButton = true,
 }) => {
-  const photo = candidate.imageUrls?.[0];
+  const photos = candidate.imageUrls ?? [];
+  const [photoIdx, setPhotoIdx] = useState(0);
   const score = candidate.compatibilityScore;
 
-  // Score color buckets
-  const scoreColor =
-    score >= 80 ? 'bg-green-500 text-white'
-    : score >= 60 ? 'bg-blue-500 text-white'
-    : score >= 40 ? 'bg-yellow-500 text-white'
-    : 'bg-gray-400 text-white';
+  // Touch swipe support
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+  const handleTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.targetTouches[0].clientX; };
+  const handleTouchMove = (e: React.TouchEvent) => { touchEndX.current = e.targetTouches[0].clientX; };
+  const handleTouchEnd = () => {
+    const diff = touchStartX.current - touchEndX.current;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) setPhotoIdx((i) => (i + 1) % photos.length);
+      else setPhotoIdx((i) => (i - 1 + photos.length) % photos.length);
+    }
+  };
 
-  // Note: changed root from <button> to <div> so we can nest interactive elements
   return (
     <div
       onClick={onClick}
-      className="group relative bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl overflow-hidden cursor-pointer hover:border-gray-400 dark:hover:border-zinc-600 hover:shadow-md transition-all"
+      className="group relative bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 hover:shadow-lg overflow-hidden flex flex-col h-full cursor-pointer transition-all"
     >
-      {/* Photo */}
-      <div className="aspect-[3/4] bg-gray-100 dark:bg-zinc-800 overflow-hidden relative">
-        {photo ? (
+      {/* Photo carousel */}
+      <div
+        className="relative w-full aspect-[3/4] bg-gray-100 dark:bg-zinc-800 touch-pan-y"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {photos.length > 0 ? (
           <img
-            src={photo}
+            src={photos[photoIdx]}
             alt={candidate.name}
             loading="lazy"
-            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            decoding="async"
+            className="w-full h-full object-cover select-none"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-4xl text-gray-300 dark:text-zinc-700">👤</div>
         )}
 
-        {/* Score chip */}
+        {/* Carousel arrows (desktop hover only) */}
+        {photos.length > 1 && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); setPhotoIdx((photoIdx - 1 + photos.length) % photos.length); }}
+              className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 text-white p-1 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10 hidden md:block"
+              aria-label="Previous photo"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setPhotoIdx((photoIdx + 1) % photos.length); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/30 hover:bg-black/50 text-white p-1 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity z-10 hidden md:block"
+              aria-label="Next photo"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+            {/* Dots */}
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10 px-2 py-1 rounded-full bg-black/20 backdrop-blur-sm">
+              {photos.map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i === photoIdx ? 'bg-white scale-110' : 'bg-white/50'}`}
+                />
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Online / Offline pill — top-left */}
+        <div className="absolute top-2 left-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur px-2 py-1 rounded-full text-[10px] font-bold shadow-sm flex items-center gap-1.5 z-10">
+          {candidate.isOnline ? (
+            <>
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_4px_rgba(34,197,94,0.6)]" />
+              <span className="text-green-700 dark:text-green-500">Online</span>
+            </>
+          ) : (
+            <span className="text-gray-500">Offline</span>
+          )}
+        </div>
+
+        {/* Match % — top-right */}
         {score > 0 && (
-          <div className={`absolute top-2 right-2 ${scoreColor} px-2.5 py-1 rounded-full text-xs font-bold shadow-sm`}>
-            {score}%
+          <div className="absolute top-2 right-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur px-2 py-1 rounded text-xs font-bold shadow-sm text-green-700 dark:text-green-500 z-10">
+            {score}% Match
+          </div>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="p-4 flex-1 flex flex-col">
+        {/* Badges */}
+        {(candidate.isVerified || candidate.isPremium) && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {candidate.isVerified && (
+              <div className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-green-200 dark:border-green-800">
+                <IconCheck className="w-3 h-3" /> Verified
+              </div>
+            )}
+            {candidate.isPremium && (
+              <div className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border border-blue-200 dark:border-blue-800">
+                <IconZap /> Plus
+              </div>
+            )}
           </div>
         )}
 
-        {/* Verified / Pro badges */}
-        <div className="absolute top-2 left-2 flex gap-1">
-          {candidate.isVerified && (
-            <div className="bg-blue-500 text-white p-1 rounded-full" title="Verified">
-              <IconCheck className="w-3 h-3" />
-            </div>
-          )}
-          {candidate.isPremium && (
-            <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-1 rounded-full" title="Pro user">
-              <IconZap />
-            </div>
-          )}
+        {/* Name + location */}
+        <div className="mb-4">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 leading-tight">
+            {candidate.name}{candidate.age ? `, ${candidate.age}` : ''}
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{candidate.location}</p>
         </div>
 
-        {/* Bottom gradient + name + Like button */}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 pt-8 flex items-end justify-between gap-2">
-          <div className="min-w-0 flex-1 text-left">
-            <h3 className="text-white font-bold text-base truncate">
-              {candidate.name}{candidate.age ? `, ${candidate.age}` : ''}
-            </h3>
-            <p className="text-white/80 text-xs truncate">{candidate.location}</p>
-          </div>
-          {showLikeButton && (
-            <LikeButton
-              candidate={candidate}
-              size="md"
-              showSuperLike={false}
-              onMatched={onMatched}
-              onLimitReached={onLimitReached}
-            />
+        {/* Footer: X + Like button row */}
+        <div className="pt-3 border-t border-gray-100 dark:border-zinc-800 flex gap-2 mt-auto" onClick={(e) => e.stopPropagation()}>
+          {onReject && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onReject(candidate.id); }}
+              className="px-3 h-9 rounded-lg border border-transparent text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-gray-500 hover:border-red-100 dark:hover:border-red-900/30 transition-colors flex items-center justify-center"
+              title="Pass"
+              aria-label="Pass"
+            >
+              <IconX />
+            </button>
+          )}
+          {showLikeButton ? (
+            <div className="flex-1">
+              <LikeButton
+                candidate={candidate}
+                size="md"
+                variant="wide"
+                showSuperLike={false}
+                onMatched={onMatched}
+                onLimitReached={onLimitReached}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 h-9 rounded-lg bg-black dark:bg-white text-white dark:text-black text-xs font-bold flex items-center justify-center gap-2">
+              <IconHeart /> Like
+            </div>
           )}
         </div>
       </div>
-
-      {/* Tags */}
-      {candidate.tags && candidate.tags.length > 0 && (
-        <div className="p-3 flex flex-wrap gap-1.5">
-          {candidate.tags.slice(0, 3).map((tag, i) => (
-            <span
-              key={i}
-              className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border border-green-100 dark:border-green-900/40 truncate max-w-full"
-              title={tag}
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

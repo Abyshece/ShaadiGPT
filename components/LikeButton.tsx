@@ -21,6 +21,7 @@ import type { MatchCandidate } from '../types';
 interface LikeButtonProps {
   candidate: MatchCandidate;
   size?: 'sm' | 'md' | 'lg';
+  variant?: 'icon' | 'wide';   // 'icon' = round button (default), 'wide' = pill bar for cards
   showSuperLike?: boolean;
   onMatched?: (matchId: string, candidate: MatchCandidate) => void;
   onLiked?: () => void;
@@ -28,7 +29,7 @@ interface LikeButtonProps {
 }
 
 const LikeButton: React.FC<LikeButtonProps> = ({
-  candidate, size = 'md', showSuperLike = true, onMatched, onLiked, onLimitReached,
+  candidate, size = 'md', variant = 'icon', showSuperLike = true, onMatched, onLiked, onLimitReached,
 }) => {
   const { profile, session, refreshProfile } = useAuth();
   const { showToast } = useToast();
@@ -150,6 +151,74 @@ const LikeButton: React.FC<LikeButtonProps> = ({
 
   // ---- render -------------------------------------------------------------
 
+  // Wide variant: a single pill-shaped bar that fills its container. Used in
+  // MatchCard footer. Never shows super-like (cards have limited space).
+  if (variant === 'wide') {
+    return (
+      <>
+        <button
+          onClick={liked ? handleUnlike : handleHeartClick}
+          disabled={busy || liked === null}
+          title={liked ? 'Undo like' : 'Like'}
+          className={`w-full h-9 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all ${
+            busy
+              ? 'bg-gray-100 dark:bg-zinc-800 text-gray-300 dark:text-zinc-600 cursor-wait'
+              : liked
+                ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-900/50'
+                : 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200'
+          }`}
+        >
+          <IconHeart /> {liked ? 'Liked' : 'Like'}
+        </button>
+        {showConfirm && renderConfirmModal()}
+      </>
+    );
+  }
+
+  function renderConfirmModal() {
+    return (
+      <div
+        className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+        onClick={() => setShowConfirm(null)}
+      >
+        <div
+          className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-200 dark:border-zinc-800 p-6"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-center">
+            <div className="w-14 h-14 mx-auto mb-4 bg-pink-100 dark:bg-pink-900/30 text-pink-500 rounded-full flex items-center justify-center">
+              <IconHeart />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
+              Like {candidate.name}?
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+              You have <strong>{remaining} of 6</strong> likes remaining today.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowConfirm(null)}
+                className="flex-1 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => performLike(false)}
+                className="flex-1 py-2.5 bg-pink-500 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-pink-600 disabled:opacity-50"
+                disabled={busy}
+              >
+                {busy ? 'Sending…' : 'Yes, Like'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              <strong>Pro tip:</strong> Pro users have unlimited likes.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
@@ -186,47 +255,7 @@ const LikeButton: React.FC<LikeButtonProps> = ({
       </div>
 
       {/* Confirm modal for free users */}
-      {showConfirm && (
-        <div
-          className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
-          onClick={() => setShowConfirm(null)}
-        >
-          <div
-            className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-200 dark:border-zinc-800 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="text-center">
-              <div className="w-14 h-14 mx-auto mb-4 bg-pink-100 dark:bg-pink-900/30 text-pink-500 rounded-full flex items-center justify-center">
-                <IconHeart />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                Like {candidate.name}?
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
-                You have <strong>{remaining} of 6</strong> likes remaining today.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowConfirm(null)}
-                  className="flex-1 py-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => performLike(false)}
-                  className="flex-1 py-2.5 bg-pink-500 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-pink-600 disabled:opacity-50"
-                  disabled={busy}
-                >
-                  {busy ? 'Sending…' : 'Yes, Like'}
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-3">
-                <strong>Pro tip:</strong> Pro users have unlimited likes.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+      {showConfirm && renderConfirmModal()}
     </>
   );
 };
