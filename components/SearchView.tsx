@@ -441,8 +441,8 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
         {hasSearched && (
           <div className="mt-8">
             {searching ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                   <div key={i} className="aspect-[3/4] rounded-xl bg-gray-100 dark:bg-zinc-800 animate-pulse" />
                 ))}
               </div>
@@ -466,7 +466,7 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
                     {results.length}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {results.map((c) => (
                     <MatchCard
                       key={c.id}
@@ -474,6 +474,18 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
                       onClick={() => setSelectedCandidate(c)}
                       onMatched={handleMatched}
                       onLimitReached={() => setShowUpgradeModal(true)}
+                      onLiked={() => {
+                        // Animate-out then remove from results array (Item 2)
+                        setTimeout(() => {
+                          setResults((prev) => prev.filter((r) => r.id !== c.id));
+                        }, 700);
+                      }}
+                      onReject={(id) => {
+                        // Same animate-out behavior for reject (Item 3)
+                        setTimeout(() => {
+                          setResults((prev) => prev.filter((r) => r.id !== id));
+                        }, 700);
+                      }}
                     />
                   ))}
                 </div>

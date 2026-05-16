@@ -16,16 +16,23 @@ interface MatchCardProps {
   onClick: () => void;
   onMatched?: (matchId: string, candidate: MatchCandidate) => void;
   onLimitReached?: () => void;
+  onLiked?: () => void;
   onReject?: (id: string) => void;
   showLikeButton?: boolean;
 }
 
 const MatchCard: React.FC<MatchCardProps> = ({
-  candidate, onClick, onMatched, onLimitReached, onReject, showLikeButton = true,
+  candidate, onClick, onMatched, onLimitReached, onLiked, onReject, showLikeButton = true,
 }) => {
   const photos = candidate.imageUrls ?? [];
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [exiting, setExiting] = useState<'like' | 'reject' | null>(null);
   const score = candidate.compatibilityScore;
+
+  const triggerExit = (action: 'like' | 'reject') => {
+    setExiting(action);
+    // Card removal happens in parent after 700ms (matches CSS duration)
+  };
 
   // Touch swipe support
   const touchStartX = useRef(0);
@@ -42,8 +49,14 @@ const MatchCard: React.FC<MatchCardProps> = ({
 
   return (
     <div
-      onClick={onClick}
-      className="group relative bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 hover:shadow-lg overflow-hidden flex flex-col h-full cursor-pointer transition-all"
+      onClick={() => !exiting && onClick()}
+      className={`group relative bg-white dark:bg-zinc-900 rounded-xl border border-gray-200 dark:border-zinc-800 hover:border-gray-300 dark:hover:border-zinc-700 hover:shadow-lg overflow-hidden flex flex-col h-full cursor-pointer transition-all duration-700 ease-in-out transform ${
+        exiting === 'like'
+          ? 'opacity-0 scale-90 -translate-y-12 rotate-3 pointer-events-none'
+          : exiting === 'reject'
+            ? 'opacity-0 scale-90 translate-y-12 -rotate-3 pointer-events-none'
+            : 'opacity-100 scale-100 translate-y-0'
+      }`}
     >
       {/* Photo carousel */}
       <div
@@ -143,10 +156,15 @@ const MatchCard: React.FC<MatchCardProps> = ({
         <div className="pt-3 border-t border-gray-100 dark:border-zinc-800 flex gap-2 mt-auto" onClick={(e) => e.stopPropagation()}>
           {onReject && (
             <button
-              onClick={(e) => { e.stopPropagation(); onReject(candidate.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerExit('reject');
+                setTimeout(() => onReject(candidate.id), 0);
+              }}
               className="px-3 h-9 rounded-lg border border-transparent text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 dark:text-gray-500 hover:border-red-100 dark:hover:border-red-900/30 transition-colors flex items-center justify-center"
               title="Pass"
               aria-label="Pass"
+              disabled={!!exiting}
             >
               <IconX />
             </button>
@@ -160,6 +178,11 @@ const MatchCard: React.FC<MatchCardProps> = ({
                 showSuperLike={false}
                 onMatched={onMatched}
                 onLimitReached={onLimitReached}
+                onLiked={() => {
+                  // Animate this card out then notify parent to remove it from results
+                  triggerExit('like');
+                  if (onLiked) onLiked();
+                }}
               />
             </div>
           ) : (

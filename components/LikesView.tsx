@@ -1,21 +1,26 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
-import { listLikesReceived, likeReceivedToCandidate } from '../lib/likesService';
+import { listLikesReceived } from '../lib/likesService';
 import LikedYouCard from './LikedYouCard';
 import ProfileModal from './ProfileModal';
 import UpgradeModal from './UpgradeModal';
 import MatchCelebrationModal from './MatchCelebrationModal';
-import { IconHeart, IconStar, IconZap } from '../constants';
+import { IconZap } from '../constants';
 import type { LikeReceived } from '../lib/likesService';
 import type { MatchCandidate } from '../types';
 
 // ============================================================================
-// LikesView
-//
-// "Likes You" tab. Shows incoming likes. Free users see blurred previews.
-// Pro users see everyone clearly and can like back to instantly match.
+// LikesView — restyled to match the legacy MatchGPT design (see Item 1):
+//   - "Likes You (N)" header with sort dropdown on the right (Pro only)
+//   - Cream/yellow gradient upsell banner with circular ⚡ icon and black
+//     "Upgrade to Pro" pill button (Free users only)
+//   - Free users see heavily blurred cards with yellow circular ⚡ icon and
+//     white "UPGRADE TO SEE" pill centered — handled inside LikedYouCard.
+//   - Grid is 4 columns on xl viewports to match Item 3.
 // ============================================================================
+
+type SortOption = 'Recent' | 'Last Active' | 'Nearby';
 
 const LikesView: React.FC = () => {
   const { profile, session } = useAuth();
@@ -26,6 +31,7 @@ const LikesView: React.FC = () => {
   const [selectedCandidate, setSelectedCandidate] = useState<MatchCandidate | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [matchCelebration, setMatchCelebration] = useState<{ matchId: string; candidate: MatchCandidate } | null>(null);
+  const [sortBy, setSortBy] = useState<SortOption>('Recent');
 
   const fetchLikes = useCallback(async () => {
     if (!session?.user.id) return;
@@ -46,73 +52,66 @@ const LikesView: React.FC = () => {
   }
 
   const isPro = profile.subscriptionTier === 'PRO';
-  const superLikeCount = likes.filter((l) => l.isSuperLike).length;
-  const regularCount = likes.length - superLikeCount;
 
   const handleMatched = (matchId: string, candidate: MatchCandidate) => {
     setSelectedCandidate(null);
     setMatchCelebration({ matchId, candidate });
-    // Refresh — the like is now a match, so it shouldn't appear in the inbox anymore
     setTimeout(fetchLikes, 500);
   };
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-6xl mx-auto py-8 px-6 lg:px-12">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-1">Likes You</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {isPro
-              ? 'These people liked you. Like back to instantly match.'
-              : 'These people liked you. Upgrade to Pro to see who they are and like back.'}
-          </p>
+        <div className="flex justify-between items-center mb-8 border-b border-gray-100 dark:border-zinc-800 pb-4">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+            Likes You {!loading && `(${likes.length})`}
+          </h1>
+          {isPro && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">Sort by:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="bg-transparent text-sm font-semibold text-gray-800 dark:text-gray-200 border-none outline-none cursor-pointer focus:ring-0 hover:underline"
+              >
+                <option value="Recent" className="dark:bg-zinc-900">Recent</option>
+                <option value="Last Active" className="dark:bg-zinc-900">Last Active</option>
+                <option value="Nearby" className="dark:bg-zinc-900">Nearby</option>
+              </select>
+            </div>
+          )}
         </div>
 
-        {/* Stats badges */}
-        {!loading && likes.length > 0 && (
-          <div className="mb-6 flex flex-wrap gap-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-300 border border-pink-100 dark:border-pink-900/40">
-              <IconHeart /> {regularCount} {regularCount === 1 ? 'like' : 'likes'}
-            </div>
-            {superLikeCount > 0 && (
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30 text-yellow-800 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800">
-                <IconStar /> {superLikeCount} super {superLikeCount === 1 ? 'like' : 'likes'}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Pro upsell banner for free users with likes */}
         {!isPro && !loading && likes.length > 0 && (
-          <div className="mb-6 bg-gradient-to-br from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 flex items-center gap-4">
-            <div className="text-yellow-500 flex-shrink-0"><IconZap /></div>
-            <div className="flex-1">
-              <h3 className="font-bold text-gray-900 dark:text-white text-sm mb-0.5">
-                {likes.length} {likes.length === 1 ? 'person likes' : 'people like'} you
-              </h3>
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                Upgrade to Pro to see them clearly and like them back to instantly match.
-              </p>
+          <div className="mb-8 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border border-orange-100 dark:border-orange-900/30 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 flex-shrink-0 bg-yellow-100 dark:bg-yellow-900/30 rounded-full flex items-center justify-center text-yellow-600 dark:text-yellow-400">
+                <IconZap />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">See who liked you</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Upgrade to ShaadiGPT Pro to reveal all {likes.length} {likes.length === 1 ? 'person' : 'people'} and sort them.
+                </p>
+              </div>
             </div>
             <button
               onClick={() => setShowUpgradeModal(true)}
-              className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm hover:opacity-90 flex-shrink-0"
+              className="bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 whitespace-nowrap h-12 px-6 rounded-full font-bold shadow-md transition-colors"
             >
-              Upgrade
+              Upgrade to Pro
             </button>
           </div>
         )}
 
-        {/* Body */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <div key={i} className="aspect-[3/4] rounded-xl bg-gray-100 dark:bg-zinc-800 animate-pulse" />
             ))}
           </div>
         ) : likes.length === 0 ? (
-          <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900/50 rounded-xl border border-gray-100 dark:border-zinc-800">
+          <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900/50 rounded-xl border border-gray-100 dark:border-zinc-800 border-dashed">
             <div className="text-5xl mb-4">💌</div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No likes yet</h3>
             <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
@@ -120,7 +119,7 @@ const LikesView: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {likes.map((like) => (
               <LikedYouCard
                 key={like.likeId}
@@ -135,7 +134,6 @@ const LikesView: React.FC = () => {
         )}
       </div>
 
-      {/* Profile modal */}
       {selectedCandidate && (
         <ProfileModal
           candidate={selectedCandidate}
@@ -145,7 +143,6 @@ const LikesView: React.FC = () => {
         />
       )}
 
-      {/* Upgrade modal */}
       {showUpgradeModal && (
         <UpgradeModal
           reason="pro_feature"
@@ -153,17 +150,14 @@ const LikesView: React.FC = () => {
         />
       )}
 
-      {/* Match celebration */}
       {matchCelebration && (
         <MatchCelebrationModal
           matchedWith={matchCelebration.candidate}
           matchId={matchCelebration.matchId}
           onClose={() => setMatchCelebration(null)}
-          onChat={(matchId) => {
+          onChat={() => {
             setMatchCelebration(null);
-            // Phase 5 batch 3: switch to matches tab + open chat
-            // For now we just close — Batch 3 wires this up
-            showToast('Chat coming in Batch 3', 'info');
+            showToast('Open Matches tab to chat', 'info');
           }}
         />
       )}

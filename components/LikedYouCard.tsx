@@ -1,5 +1,5 @@
 import React from 'react';
-import { IconCheck, IconStar, IconZap, IconHeart, IconLock, IconClock } from '../constants';
+import { IconCheck, IconStar, IconZap, IconHeart, IconClock } from '../constants';
 import LikeButton from './LikeButton';
 import { likeReceivedToCandidate } from '../lib/likesService';
 import type { LikeReceived } from '../lib/likesService';
@@ -48,7 +48,7 @@ const LikedYouCard: React.FC<LikedYouCardProps> = ({ like, isPro, onView, onUpgr
             alt={isPro ? like.liker.name : 'Liked you'}
             loading="lazy"
             className={`w-full h-full object-cover transition-all ${
-              isPro ? 'group-hover:scale-[1.02]' : 'blur-2xl scale-110'
+              isPro ? 'group-hover:scale-[1.02]' : 'blur-xl scale-110 opacity-70'
             }`}
           />
         ) : (
@@ -78,15 +78,15 @@ const LikedYouCard: React.FC<LikedYouCardProps> = ({ like, isPro, onView, onUpgr
 
         {/* Free user upgrade overlay */}
         {!isPro && (
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col items-center justify-end p-4 pb-6">
-            <div className="bg-white/95 dark:bg-zinc-900/95 rounded-full p-3 mb-3 shadow-lg">
-              <span className="text-yellow-500"><IconLock /></span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center z-10">
+            <div className="w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center shadow-lg mb-3 animate-bounce">
+              <span className="text-white"><IconZap /></span>
             </div>
             <button
               onClick={(e) => { e.stopPropagation(); onUpgrade(); }}
-              className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg hover:opacity-90 inline-flex items-center gap-1.5"
+              className="text-[11px] font-bold text-gray-800 uppercase bg-white/90 px-3 py-1.5 rounded backdrop-blur-sm hover:bg-white shadow-sm tracking-wide"
             >
-              <IconZap /> Unlock to See
+              Upgrade to See
             </button>
           </div>
         )}

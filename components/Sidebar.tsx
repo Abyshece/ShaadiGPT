@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { isAdminEmail } from '../lib/adminService';
+import { listLikesReceived } from '../lib/likesService';
+import { listMatches } from '../lib/matchesService';
 import VerificationRequestModal from './VerificationRequestModal';
 import {
   IconSearch, IconHistory, IconHeart, IconMessageCircle, IconStar, IconUser,
@@ -25,15 +27,47 @@ const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, isCollapsed, toggleCollapse,
   activeTab, onTabChange,
 }) => {
-  const { profile, signOut } = useAuth();
+  const { profile, session, signOut } = useAuth();
   const tier = profile?.subscriptionTier || 'FREE';
   const isPro = tier === 'PRO';
   const isAdmin = isAdminEmail(profile?.email);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [unreadMatches, setUnreadMatches] = useState(0);
+
+  // Poll for new likes + unread messages every 30s so the red dots stay current.
+  // (Light polling is fine; chat realtime handles instant in-room updates.)
+  const refreshCounters = useCallback(async () => {
+    if (!session?.user.id) return;
+    const [likesRes, matchesRes] = await Promise.all([
+      listLikesReceived(session.user.id),
+      listMatches(session.user.id),
+    ]);
+    if (!likesRes.error) setLikesCount(likesRes.likes.length);
+    if (!matchesRes.error) {
+      const unread = matchesRes.matches.reduce((sum, m) => sum + (m.unreadCount || 0), 0);
+      setUnreadMatches(unread);
+    }
+  }, [session?.user.id]);
+
+  useEffect(() => {
+    refreshCounters();
+    const id = setInterval(refreshCounters, 30000);
+    return () => clearInterval(id);
+  }, [refreshCounters]);
+
+  // Also refresh when user switches into the likes/matches tabs (clears badge fast)
+  useEffect(() => {
+    if (activeTab === 'likes' || activeTab === 'matches') {
+      // Slight delay so the view's own fetch (which marks read) runs first
+      const id = setTimeout(refreshCounters, 1500);
+      return () => clearTimeout(id);
+    }
+  }, [activeTab, refreshCounters]);
 
   const SidebarItem = ({
-    icon, label, id,
-  }: { icon: React.ReactNode; label: string; id: Tab }) => (
+    icon, label, id, count,
+  }: { icon: React.ReactNode; label: string; id: Tab; count?: number }) => (
     <div
       onClick={() => { onTabChange(id); setIsOpen(false); }}
       className={`relative group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 mb-1
@@ -41,13 +75,29 @@ const Sidebar: React.FC<SidebarProps> = ({
           ? 'bg-gray-100 dark:bg-zinc-800 text-gray-900 dark:text-gray-100'
           : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-zinc-800 hover:text-gray-900 dark:hover:text-gray-200'}
         ${isCollapsed ? 'justify-center' : ''}`}
-      title={isCollapsed ? label : undefined}
+      title={isCollapsed ? `${label}${count ? ` (${count})` : ''}` : undefined}
     >
-      <span className="flex-shrink-0">{icon}</span>
-      {!isCollapsed && <span className="text-sm font-medium truncate animate-fade-in flex-1">{label}</span>}
+      <span className="flex-shrink-0 relative">
+        {icon}
+        {/* Red pulse dot on the icon when collapsed (sidebar narrow mode) */}
+        {isCollapsed && count !== undefined && count > 0 && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white dark:ring-[#191919] animate-pulse" />
+        )}
+      </span>
+      {!isCollapsed && (
+        <>
+          <span className="text-sm font-medium truncate animate-fade-in flex-1">{label}</span>
+          {/* Red badge with count when expanded */}
+          {count !== undefined && count > 0 && (
+            <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400 animate-pulse">
+              {count > 99 ? '99+' : count}
+            </span>
+          )}
+        </>
+      )}
       {isCollapsed && (
         <div className="absolute left-full ml-3 px-2 py-1 bg-gray-900 dark:bg-white text-white dark:text-black text-xs font-bold rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity shadow-lg">
-          {label}
+          {label}{count ? ` (${count})` : ''}
         </div>
       )}
     </div>
@@ -80,8 +130,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 space-y-1 px-3 overflow-y-auto overflow-x-hidden">
         <SidebarItem icon={<IconSearch />} label="Find Match" id="search" />
         <SidebarItem icon={<IconHistory />} label="Chat History" id="history" />
-        <SidebarItem icon={<IconHeart />} label="Likes You" id="likes" />
-        <SidebarItem icon={<IconMessageCircle />} label="Matches" id="matches" />
+        <SidebarItem icon={<IconHeart />} label="Likes You" id="likes" count={likesCount} />
+        <SidebarItem icon={<IconMessageCircle />} label="Matches" id="matches" count={unreadMatches} />
         <SidebarItem icon={<IconStar />} label="Standouts" id="standouts" />
         <SidebarItem icon={<IconUser />} label="My Profile" id="profile" />
         <SidebarItem icon={<IconSettings />} label="Settings" id="settings" />
