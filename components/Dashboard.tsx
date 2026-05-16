@@ -165,7 +165,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
 
         <div className="flex-1 relative overflow-hidden">
           <Suspense fallback={<TabLoader />}>
-            {activeTab === 'search' && <SearchView onNavigateToMatches={handleNavigateToMatches} />}
+            {activeTab === 'search' && <SearchView onNavigateToMatches={handleNavigateToMatches} onNavigateToProfile={() => setActiveTab('profile')} />}
             {activeTab === 'history' && <HistoryView />}
             {activeTab === 'likes' && <LikesView />}
             {activeTab === 'matches' && <MatchesView initialMatchId={pendingMatchOpenId} />}

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
 import { runSearch } from '../lib/matchingService';
@@ -10,7 +10,7 @@ import VerificationBanner from './VerificationBanner';
 import UpgradeModal from './UpgradeModal';
 import FilterPanel from './FilterPanel';
 import MatchCelebrationModal from './MatchCelebrationModal';
-import { IconSearch, IconZap } from '../constants';
+import { IconZap, IconX } from '../constants';
 import type { MatchCandidate, FilterOptions } from '../types';
 
 // ============================================================================
@@ -22,6 +22,7 @@ import type { MatchCandidate, FilterOptions } from '../types';
 
 interface SearchViewProps {
   onNavigateToMatches?: (matchId: string) => void;
+  onNavigateToProfile?: () => void;
 }
 
 const DEFAULT_FILTERS: FilterOptions = {
@@ -63,8 +64,8 @@ function countActiveFilters(f: FilterOptions): number {
   return n;
 }
 
-const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
-  const { profile, session, refreshProfile } = useAuth();
+const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigateToProfile }) => {
+  const { profile, profileRow, session, refreshProfile } = useAuth();
   const { showToast } = useToast();
 
   const [prompt, setPrompt] = useState('');
@@ -77,6 +78,7 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [matchCelebration, setMatchCelebration] = useState<{ matchId: string; candidate: MatchCandidate } | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   // Track whether we've already consumed the pending prompt this session so we
   // don't re-trigger on every re-render of SearchView.
@@ -113,6 +115,42 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
   const verification = computeVerificationStatus(profile);
   const isLockedOut = verification.isLockedOut;
   const activeFilterCount = countActiveFilters(filters);
+
+  // Profile completion percentage — mirrors the calc in ProfileView.tsx so the
+  // numbers stay consistent across screens. Drives the banner at top of dashboard.
+  const { completionPercentage, estimatedMinutes } = useMemo(() => {
+    if (!profile) return { completionPercentage: 0, estimatedMinutes: 0 };
+    const photos = profileRow?.photo_urls ?? [];
+    const fieldsToCheck: (keyof typeof profile)[] = [
+      'name', 'age', 'location', 'gender', 'pronouns', 'sexuality', 'hometown',
+      'ethnicity', 'race', 'languages', 'jobTitle', 'work', 'workStyle',
+      'educationLevel', 'university', 'religion', 'politics', 'zodiac',
+      'height', 'bodyType', 'hairColor', 'hairType', 'eyeColor', 'facialHair',
+      'clothingStyle', 'wearsGlasses', 'hasTattoos',
+      'drinking', 'smoking', 'marijuana', 'drugs', 'covidVaccine',
+      'gymRoutine', 'canCook', 'hobbies', 'sportsInterest', 'readingInterest',
+      'lovesTravel', 'travelStyle', 'livingPreference', 'phoneType',
+      'interestedIn', 'relationshipType', 'datingIntention', 'marriageTimeline',
+      'children', 'familyPlans', 'pets', 'familyCloseness', 'siblings',
+      'description', 'loveLanguage', 'attachmentStyle', 'socialBattery',
+      'conflictResolution', 'financialApproach', 'dietaryPreferences', 'sleepSchedule',
+      'futurePlans', 'dreamHouseType', 'linkedin', 'instagram',
+    ];
+    let completed = 0;
+    fieldsToCheck.forEach((f) => {
+      const v = profile[f];
+      if (v !== undefined && v !== null && v !== '' && v !== 'Not specified') completed++;
+    });
+    const total = fieldsToCheck.length + 6;
+    const totalCompleted = completed + photos.length;
+    const remaining = total - totalCompleted;
+    return {
+      completionPercentage: Math.min(100, Math.floor((totalCompleted / total) * 100)),
+      estimatedMinutes: Math.max(1, Math.ceil(remaining / 5)),
+    };
+  }, [profile, profileRow]);
+
+  const showCompletionBanner = !!profile && completionPercentage < 100 && !bannerDismissed;
 
   const handleSearch = useCallback(async (overridePrompt?: string) => {
     const effectivePrompt = (overridePrompt ?? prompt).trim();
@@ -178,6 +216,36 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
 
   return (
     <div className="h-full overflow-y-auto">
+      {/* Profile completion banner — full-width, dismissible. Encourages users to
+          finish their profile because a 100% profile leads to more accurate matches. */}
+      {showCompletionBanner && (
+        <div className="bg-rose-50 dark:bg-rose-900/20 border-b border-rose-200 dark:border-rose-900/30 px-4 py-3 relative animate-fade-in">
+          <div className="max-w-6xl mx-auto flex items-center justify-center gap-3 flex-wrap pr-8">
+            <div className="w-5 h-5 bg-rose-100 dark:bg-rose-800 text-rose-600 dark:text-rose-300 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0">
+              !
+            </div>
+            <span className="text-sm text-rose-800 dark:text-rose-200 font-medium">
+              Your profile is only <strong>{completionPercentage}%</strong> complete (~{estimatedMinutes} min to finish). A 100% profile leads to more accurate matches.
+            </span>
+            <button
+              onClick={() => {
+                if (onNavigateToProfile) onNavigateToProfile();
+              }}
+              className="text-xs bg-rose-600 hover:bg-rose-700 text-white px-4 py-1.5 rounded-full font-bold transition-colors shadow-sm whitespace-nowrap"
+            >
+              Complete Now →
+            </button>
+          </div>
+          <button
+            onClick={() => setBannerDismissed(true)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-rose-400 hover:text-rose-700 dark:hover:text-rose-200 rounded-full transition-colors"
+            aria-label="Dismiss banner"
+          >
+            <div className="transform scale-75"><IconX /></div>
+          </button>
+        </div>
+      )}
+
       <div className="max-w-6xl mx-auto py-8 px-6 lg:px-12">
         {isLockedOut && <VerificationBanner verification={verification} />}
 
@@ -201,14 +269,85 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
           </div>
         )}
 
-        {/* Daily-limit pill + filter button */}
-        <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
-          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold ${
+        {/* Pill-shaped prompt input — filter button on left, textarea in middle, send on right.
+            Inspired by the legacy MatchGPT search bar with rounded-[32px] container and soft drop shadow. */}
+        <div className={`
+          w-full relative flex items-center gap-2 bg-white dark:bg-zinc-800 border rounded-[32px] p-1.5 mb-4 transition-all duration-300 ease-out
+          ${hasSearched
+            ? 'shadow-[0_20px_40px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_40px_-12px_rgba(0,0,0,0.6)] border-gray-300 dark:border-zinc-600'
+            : 'shadow-[0_2px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.4)] border-gray-200 dark:border-zinc-700'
+          }
+          focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.12)]
+        `}>
+          {/* Filter button (inside pill, left) */}
+          <button
+            onClick={() => setShowFilterPanel(true)}
+            className={`ml-1 w-9 h-9 flex-none flex items-center justify-center rounded-full transition-all relative ${
+              activeFilterCount > 0
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                : 'text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-zinc-700'
+            }`}
+            title="Filters"
+            aria-label="Open filters"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 inline-flex items-center justify-center w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full font-bold">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
+          {/* Textarea */}
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSearch();
+              }
+            }}
+            disabled={searching || isLockedOut}
+            placeholder="Say something like I'm looking for someone who loves coffee, hikes and works in finance."
+            rows={1}
+            style={{ minHeight: '44px' }}
+            className="w-full max-h-40 bg-transparent border-0 focus:ring-0 resize-none py-3 px-2 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 placeholder:text-sm placeholder:font-normal focus:outline-none leading-relaxed text-sm overflow-hidden"
+          />
+
+          {/* Send button (inside pill, right) */}
+          <button
+            onClick={() => handleSearch()}
+            disabled={(!prompt.trim() && activeFilterCount === 0) || searching || isLockedOut}
+            className={`mr-1 w-9 h-9 flex-none flex items-center justify-center rounded-full transition-all duration-200 ${
+              ((!prompt.trim() && activeFilterCount === 0) || searching || isLockedOut)
+                ? 'bg-transparent text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                : 'bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 shadow-sm'
+            }`}
+            aria-label="Search"
+            title="Search"
+          >
+            {searching ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white dark:border-black/30 dark:border-t-black rounded-full animate-spin" />
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            )}
+          </button>
+        </div>
+
+        {/* Daily allowance subtitle (subtle, below pill) */}
+        <div className="flex items-center justify-center gap-3 mb-2 flex-wrap text-[11px]">
+          <span className={`inline-flex items-center gap-1.5 font-medium ${
             allowance.isPro
-              ? 'bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30 text-yellow-800 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800'
+              ? 'text-yellow-700 dark:text-yellow-400'
               : allowance.allowed
-                ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40'
-                : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-900/40'
+                ? 'text-gray-500 dark:text-gray-400'
+                : 'text-red-600 dark:text-red-400'
           }`}>
             {allowance.isPro ? (
               <><IconZap /> Pro · Unlimited searches</>
@@ -217,68 +356,15 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches }) => {
             ) : (
               <>Daily limit reached · resets in {allowance.resetInHours}h</>
             )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!allowance.isPro && (
-              <button
-                onClick={() => setShowUpgradeModal(true)}
-                className="text-xs font-bold text-yellow-700 dark:text-yellow-400 hover:underline"
-              >
-                Upgrade to Pro →
-              </button>
-            )}
-
+          </span>
+          {!allowance.isPro && (
             <button
-              onClick={() => setShowFilterPanel(true)}
-              className={`relative px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                activeFilterCount > 0
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                  : 'bg-white dark:bg-zinc-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-zinc-700 hover:border-gray-400 dark:hover:border-zinc-600'
-              }`}
+              onClick={() => setShowUpgradeModal(true)}
+              className="font-bold text-yellow-700 dark:text-yellow-400 hover:underline"
             >
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full">
-                  {activeFilterCount}
-                </span>
-              )}
+              Upgrade to Pro →
             </button>
-          </div>
-        </div>
-
-        {/* Prompt textarea */}
-        <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden mb-3">
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleSearch();
-              }
-            }}
-            disabled={searching || isLockedOut}
-            placeholder="Describe your ideal match in your own words…"
-            className="w-full p-5 text-base text-gray-900 dark:text-white bg-transparent outline-none resize-none min-h-[120px] placeholder:text-gray-400"
-          />
-          <div className="flex items-center justify-between bg-gray-50 dark:bg-zinc-800/50 px-4 py-3 border-t border-gray-100 dark:border-zinc-800">
-            <span className="text-[11px] text-gray-400">⌘ + Enter to search</span>
-            <button
-              onClick={() => handleSearch()}
-              disabled={searching || isLockedOut}
-              className="bg-black dark:bg-white text-white dark:text-black px-5 py-2 rounded-lg text-sm font-bold shadow-sm hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {searching ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white dark:border-black/30 dark:border-t-black rounded-full animate-spin" />
-                  Searching…
-                </>
-              ) : (
-                <><IconSearch /> Search</>
-              )}
-            </button>
-          </div>
+          )}
         </div>
 
         {/* Trending Near You — landing state only */}
