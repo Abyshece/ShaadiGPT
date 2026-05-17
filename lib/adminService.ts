@@ -23,6 +23,8 @@ export interface PlatformStats {
   super_likes: number;
   pending_reports: number;
   pending_verifications: number;
+  total_blocks: number;
+  blocks_today: number;
   signups_today: number;
   signups_week: number;
   matches_today: number;
