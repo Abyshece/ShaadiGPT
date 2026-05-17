@@ -38,17 +38,25 @@ export interface SearchInput {
   searcher: UserProfile;
   prompt: string;            // natural-language query, may be empty
   filters: FilterOptions;
+  limit?: number;            // max candidates to return (default 8 for free, unlimited for pro)
 }
 
 export interface SearchOutput {
-  candidates: MatchCandidate[];   // top 20, ranked
+  candidates: MatchCandidate[];   // top N, ranked
   poolSize: number;               // how many we considered before ranking
   totalEligible: number;          // how many in DB before hard filters
 }
 
 /**
  * Run the full matching pipeline. Fetches candidate pool from Supabase,
- * applies hard filters, scores survivors, returns top 20.
+ * applies hard filters, scores survivors, returns top N.
+ *
+ * Tier limits (Item 4):
+ *   - FREE (Basic): 8 results per search (2 rows × 4 cards in the new grid)
+ *   - PRO:          up to 50 results per search (effectively unlimited)
+ *
+ * Caller decides the limit by passing `limit`. Defaults to 8 if not provided
+ * so any new callers won't accidentally explode the result set.
  */
 export async function runSearch(input: SearchInput): Promise<SearchOutput> {
   // 1. Pull candidate pool
@@ -71,10 +79,11 @@ export async function runSearch(input: SearchInput): Promise<SearchOutput> {
   // 3. Score every survivor
   const scored = survivors.map((row) => scoreCandidate(row, input.searcher, input.prompt));
 
-  // 4. Sort by score descending, take top 20
+  // 4. Sort by score descending, take top N (default 8)
   scored.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+  const limit = input.limit ?? 8;
   return {
-    candidates: scored.slice(0, 20),
+    candidates: scored.slice(0, limit),
     poolSize,
     totalEligible,
   };

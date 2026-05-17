@@ -36,7 +36,7 @@ const FIELD_MAP: Partial<Record<keyof UserProfile, keyof ProfileRow>> = {
   languages: 'languages',
 
   height: 'height',
-  // body_type — not present in UserProfile yet, but on the DB. Skipped.
+  bodyType: 'body_type',
 
   hairColor: 'hair_color',
   hairType: 'hair_type',

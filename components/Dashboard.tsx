@@ -4,7 +4,7 @@ import Sidebar from './Sidebar';
 import MatchCelebrationModal from './MatchCelebrationModal';
 import { subscribeToNewMatches } from '../lib/chatService';
 import { supabase } from '../lib/supabase';
-import { IconMenu } from '../constants';
+import { IconMenu, IconEdit } from '../constants';
 import type { MatchCandidate } from '../types';
 
 // ============================================================================
@@ -59,6 +59,9 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
 
   const [pendingMatchOpenId, setPendingMatchOpenId] = useState<string | null>(null);
   const [matchCelebration, setMatchCelebration] = useState<{ matchId: string; candidate: MatchCandidate } | null>(null);
+  // Bumping this forces SearchView to remount, clearing prompt + results.
+  // Used by the pencil "new chat" icon in the topbar.
+  const [searchResetKey, setSearchResetKey] = useState(0);
 
   // Global new-match subscription (works regardless of which tab is active)
   useEffect(() => {
@@ -147,7 +150,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
           >
             <IconMenu />
           </button>
-          <div className="font-bold text-gray-700 dark:text-gray-100 text-lg">
+          <div className="font-bold text-gray-700 dark:text-gray-100 text-lg flex-1">
             <span className="md:hidden">ShaadiGPT</span>
             <span className="hidden md:block capitalize">
               {activeTab === 'search' ? 'Find Match'
@@ -161,11 +164,23 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
                 : 'Settings'}
             </span>
           </div>
+          {/* Pencil icon — only on the Find Match tab. Resets the search input
+              and results to start a fresh "new chat" exactly like ChatGPT. */}
+          {activeTab === 'search' && (
+            <button
+              onClick={() => setSearchResetKey((k) => k + 1)}
+              className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 p-2 rounded hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+              title="New search"
+              aria-label="New search"
+            >
+              <IconEdit />
+            </button>
+          )}
         </div>
 
         <div className="flex-1 relative overflow-hidden">
           <Suspense fallback={<TabLoader />}>
-            {activeTab === 'search' && <SearchView onNavigateToMatches={handleNavigateToMatches} onNavigateToProfile={() => setActiveTab('profile')} />}
+            {activeTab === 'search' && <SearchView key={searchResetKey} onNavigateToMatches={handleNavigateToMatches} onNavigateToProfile={() => setActiveTab('profile')} />}
             {activeTab === 'history' && <HistoryView />}
             {activeTab === 'likes' && <LikesView />}
             {activeTab === 'matches' && <MatchesView initialMatchId={pendingMatchOpenId} />}

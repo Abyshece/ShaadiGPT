@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import Auth from './Auth';
-import { IconSearch } from '../constants';
 
 // ============================================================================
 // LandingView
@@ -15,11 +14,13 @@ import { IconSearch } from '../constants';
 const PENDING_PROMPT_KEY = 'shaadigpt_pending_prompt';
 
 const EXAMPLE_PROMPTS = [
-  'Ambitious lawyer in Mumbai who loves hiking',
-  'Vegetarian, spiritual, wants marriage in 1-2 years',
-  'Creative artist who travels often',
-  'Athletic engineer with secure attachment',
-  'Loves cooking, family-oriented, in Bangalore',
+  'Find a match near me',
+  'Show me all online matches',
+  'Find coffee lovers',
+  'Hiking partners',
+  'Find an ambitious introvert',
+  'Most compatible matches',
+  'Looking for friends',
 ];
 
 interface LandingViewProps {
@@ -60,54 +61,66 @@ const LandingView: React.FC<LandingViewProps> = ({ onSignupInitiated, onShowLega
         </button>
       </header>
 
-      {/* Hero */}
+      {/* Hero — mirrors the signed-in SearchView dashboard exactly so guests
+          see the experience they'll get after signing up. */}
       <main className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-        <div className="w-full max-w-2xl">
-          {/* Headline */}
-          <div className="text-center mb-10">
-            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white tracking-tight mb-3">
-              Find your match.
+        <div className="w-full max-w-3xl">
+          {/* Sparkle + headline */}
+          <div className="text-center mb-10 animate-fade-in">
+            <div className="text-6xl mb-4">✨</div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white tracking-tight mb-2">
+              Find your meaningful match
             </h1>
-            <p className="text-base sm:text-lg text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-              Describe the person you're looking for. Our algorithm scores every profile across 70+ attributes.
+            <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
+              Search by personality, interests, or vibe.
             </p>
           </div>
 
-          {/* Prompt input */}
-          <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl shadow-sm overflow-hidden mb-3">
+          {/* Pill-shaped prompt input — matches SearchView */}
+          <div className="w-full relative flex items-center gap-2 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-[32px] p-1.5 mb-3 shadow-[0_2px_12px_rgba(0,0,0,0.08)] dark:shadow-[0_2px_12px_rgba(0,0,0,0.4)] focus-within:shadow-[0_4px_16px_rgba(0,0,0,0.12)] transition-shadow">
+            <div className="ml-1 w-9 h-9 flex-none flex items-center justify-center text-gray-400">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+              </svg>
+            </div>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
                   handleSearchAttempt();
                 }
               }}
-              placeholder="Describe your ideal match…"
-              rows={3}
-              className="w-full p-5 text-base text-gray-900 dark:text-white bg-transparent outline-none resize-none placeholder:text-gray-400"
+              placeholder="Say something like I'm looking for someone who loves coffee, hikes and works in finance."
+              rows={1}
+              style={{ minHeight: '44px' }}
+              className="w-full max-h-40 bg-transparent border-0 focus:ring-0 resize-none py-3 px-2 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 placeholder:text-sm focus:outline-none leading-relaxed text-sm overflow-hidden"
             />
-            <div className="flex items-center justify-between bg-gray-50 dark:bg-zinc-800/50 px-4 py-3 border-t border-gray-100 dark:border-zinc-800">
-              <span className="text-[11px] text-gray-400">⌘ + Enter to search</span>
-              <button
-                onClick={handleSearchAttempt}
-                className="bg-black dark:bg-white text-white dark:text-black px-5 py-2 rounded-lg text-sm font-bold shadow-sm hover:opacity-90 transition-opacity flex items-center gap-2"
-              >
-                <IconSearch /> Search
-              </button>
-            </div>
+            <button
+              onClick={handleSearchAttempt}
+              className="mr-1 w-9 h-9 flex-none flex items-center justify-center rounded-full bg-black dark:bg-white text-white dark:text-black hover:bg-gray-800 dark:hover:bg-gray-200 shadow-sm transition-colors"
+              aria-label="Search"
+              title="Search"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
           </div>
 
-          {/* Example prompts */}
-          <div className="mt-6">
-            <p className="text-xs uppercase font-bold text-gray-400 tracking-widest mb-3 text-center">Try one of these</p>
-            <div className="flex flex-wrap gap-2 justify-center">
+          {/* Trending Near You — matches SearchView */}
+          <div className="mt-8 animate-fade-in">
+            <p className="text-center text-[11px] uppercase font-bold text-gray-400 tracking-widest mb-4">
+              Trending near you
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
               {EXAMPLE_PROMPTS.map((ex) => (
                 <button
                   key={ex}
                   onClick={() => handleExampleClick(ex)}
-                  className="text-xs px-3 py-1.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-zinc-700 border border-gray-200 dark:border-zinc-700 transition-colors"
+                  className="px-5 py-2 rounded-full bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 text-sm font-medium text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-zinc-500 hover:text-gray-900 dark:hover:text-white hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
                 >
                   {ex}
                 </button>
@@ -116,7 +129,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onSignupInitiated, onShowLega
           </div>
 
           {/* Trust line */}
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center mt-10">
+          <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center mt-12">
             Free to use · Verified profiles · Built for serious relationships
           </p>
         </div>

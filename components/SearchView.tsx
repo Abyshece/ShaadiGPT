@@ -171,11 +171,14 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
     setHasSearched(true);
 
     try {
+      // Item 4: Free users see 8 results (2 rows × 4 cards), Pro users see up to 50.
+      const isProUser = profile.subscriptionTier === 'PRO';
       const output = await runSearch({
         searcherId: session.user.id,
         searcher: profile,
         prompt: effectivePrompt,
         filters,
+        limit: isProUser ? 50 : 8,
       });
 
       setResults(output.candidates);
