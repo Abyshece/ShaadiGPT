@@ -14,11 +14,15 @@ import type { MatchCandidate } from '../types';
 // ============================================================================
 // HistoryView
 //
-// Lists the user's past searches. Click one to re-run it (against current
-// candidate pool — results may differ from the snapshot).
+// Lists the user's past searches. Click one to navigate to Find Match tab
+// with the prompt + filters pre-applied and auto-run.
 // ============================================================================
 
-const HistoryView: React.FC = () => {
+interface HistoryViewProps {
+  onOpenInSearch?: (saved: SavedSearch) => void;
+}
+
+const HistoryView: React.FC<HistoryViewProps> = ({ onOpenInSearch }) => {
   const { profile, session, refreshProfile } = useAuth();
   const { showToast } = useToast();
 
@@ -44,7 +48,7 @@ const HistoryView: React.FC = () => {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
-  const handleRerun = useCallback(async (saved: SavedSearch) => {
+  const handleRerun = useCallback((saved: SavedSearch) => {
     if (!profile || !session?.user.id) return;
 
     const allowance = computeSearchAllowance(profile);
@@ -53,27 +57,33 @@ const HistoryView: React.FC = () => {
       return;
     }
 
+    // Delegate to parent: switches to Find Match tab and auto-runs the search.
+    // Falls back to in-place rerun if no callback is wired (legacy behavior).
+    if (onOpenInSearch) {
+      onOpenInSearch(saved);
+      return;
+    }
+
+    // Legacy in-place rerun (kept for safety if Dashboard doesn't pass the prop)
     setActiveSearch(saved);
     setRerunning(true);
     setResults([]);
 
-    try {
-      const output = await runSearch({
-        searcherId: session.user.id,
-        searcher: profile,
-        prompt: saved.prompt,
-        filters: saved.filters,
-      });
-      setResults(output.candidates);
-      await incrementSearchCount(session.user.id, profile);
-      await refreshProfile();
-      showToast(`Re-ran with ${output.candidates.length} fresh matches`, 'success');
-    } catch (e: unknown) {
-      showToast('Re-run failed', 'error');
-    } finally {
-      setRerunning(false);
-    }
-  }, [profile, session?.user.id, refreshProfile, showToast]);
+    runSearch({
+      searcherId: session.user.id,
+      searcher: profile,
+      prompt: saved.prompt,
+      filters: saved.filters,
+    })
+      .then(async (output) => {
+        setResults(output.candidates);
+        await incrementSearchCount(session.user.id, profile);
+        await refreshProfile();
+        showToast(`Re-ran with ${output.candidates.length} fresh matches`, 'success');
+      })
+      .catch(() => showToast('Re-run failed', 'error'))
+      .finally(() => setRerunning(false));
+  }, [profile, session?.user.id, refreshProfile, showToast, onOpenInSearch]);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('Delete this saved search?')) return;
@@ -218,7 +228,7 @@ const HistoryView: React.FC = () => {
                 </div>
 
                 {rerunning ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {[1, 2, 3, 4, 5, 6].map((i) => (
                       <div key={i} className="aspect-[3/4] rounded-xl bg-gray-100 dark:bg-zinc-800 animate-pulse" />
                     ))}
@@ -228,7 +238,7 @@ const HistoryView: React.FC = () => {
                     No matches with these criteria right now.
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {results.map((c) => (
                       <MatchCard key={c.id} candidate={c} onClick={() => setSelectedCandidate(c)} />
                     ))}

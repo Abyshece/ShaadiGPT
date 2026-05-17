@@ -181,7 +181,19 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode, onToggleDarkMode, the
         <div className="flex-1 relative overflow-hidden">
           <Suspense fallback={<TabLoader />}>
             {activeTab === 'search' && <SearchView key={searchResetKey} onNavigateToMatches={handleNavigateToMatches} onNavigateToProfile={() => setActiveTab('profile')} />}
-            {activeTab === 'history' && <HistoryView />}
+            {activeTab === 'history' && (
+              <HistoryView
+                onOpenInSearch={(saved) => {
+                  // Stash both prompt + filters; SearchView reads them on mount
+                  // and auto-runs the search (same channel used by landing flow).
+                  sessionStorage.setItem('shaadigpt_pending_prompt', saved.prompt);
+                  sessionStorage.setItem('shaadigpt_pending_filters', JSON.stringify(saved.filters));
+                  // Bump the key to force a fresh SearchView mount so its useEffect fires
+                  setSearchResetKey((k) => k + 1);
+                  setActiveTab('search');
+                }}
+              />
+            )}
             {activeTab === 'likes' && <LikesView />}
             {activeTab === 'matches' && <MatchesView initialMatchId={pendingMatchOpenId} />}
             {activeTab === 'standouts' && <StandoutsView onNavigateToMatches={handleNavigateToMatches} />}

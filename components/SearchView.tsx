@@ -84,17 +84,26 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
   // don't re-trigger on every re-render of SearchView.
   const pendingPromptConsumed = useRef(false);
 
-  // On mount: if the user landed here via the landing-page flow, they have a
-  // prompt stashed in sessionStorage. Read it, pre-fill the input, and trigger
-  // an automatic search so they see results immediately. Only do this once.
+  // On mount: if the user landed here via the landing-page flow OR clicked a
+  // saved search in History, they have a prompt (and optionally filters)
+  // stashed in sessionStorage. Read, pre-fill, and auto-run.
   useEffect(() => {
     if (pendingPromptConsumed.current) return;
     const pending = sessionStorage.getItem('shaadigpt_pending_prompt');
+    const pendingFiltersRaw = sessionStorage.getItem('shaadigpt_pending_filters');
     if (pending && pending.trim()) {
       pendingPromptConsumed.current = true;
       sessionStorage.removeItem('shaadigpt_pending_prompt');
+      sessionStorage.removeItem('shaadigpt_pending_filters');
       setPrompt(pending);
-      // Defer the auto-search slightly so the input renders + auth state stabilises
+      if (pendingFiltersRaw) {
+        try {
+          const f = JSON.parse(pendingFiltersRaw) as FilterOptions;
+          setFilters(f);
+        } catch {
+          // Corrupt JSON — fall back to defaults already in state
+        }
+      }
       setTimeout(() => {
         autoRunSearchRef.current?.(pending);
       }, 400);
