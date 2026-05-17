@@ -154,7 +154,7 @@ export async function listMyLikesDetailed(
   // Hydrate with full profile data
   const ids = likeRows.map((r) => r.liked_id as string);
   const { data: profileRows, error: profErr } = await supabase
-    .from('profiles')
+    .from('public_profiles')
     .select('id, name, age, location, description, photo_urls, is_verified, subscription_tier, hidden_fields, is_banned')
     .in('id', ids);
   if (profErr) return { entries: [], error: profErr.message };
