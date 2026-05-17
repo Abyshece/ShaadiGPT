@@ -293,7 +293,7 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
               { key: 'isOnline', label: 'Online Now', icon: <div className="w-2 h-2 bg-green-500 rounded-full" />, active: filters.isOnline },
               { key: 'isVerified', label: 'Verified Only', icon: <IconCheck className="w-3 h-3" />, active: filters.isVerified },
               { key: 'hasInstagram', label: 'Has Instagram', icon: <span>📷</span>, active: filters.hasInstagram },
-              { key: 'isPremium', label: 'Pro Users', icon: <IconZap />, active: filters.isPremium },
+              { key: 'hasLinkedin', label: 'Has LinkedIn', icon: <span>💼</span>, active: filters.hasLinkedin },
             ].filter((s) => !s.active).map((s) => (
               <button
                 key={s.key}
@@ -378,10 +378,24 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
           </button>
         </div>
 
-        {/* Daily-allowance subtitle removed — every user has unlimited searches
-            while PRO_FOR_ALL is on (see profileService.ts). */}
+        {/* Daily allowance — shows how many of the day's 3 free searches remain.
+            Subtle until you're running low. */}
+        <div className="flex items-center justify-center gap-3 mb-2 flex-wrap text-[11px]">
+          <span className={`font-medium ${
+            !allowance.allowed
+              ? 'text-red-600 dark:text-red-400'
+              : allowance.remaining === 1
+                ? 'text-yellow-700 dark:text-yellow-400'
+                : 'text-gray-500 dark:text-gray-400'
+          }`}>
+            {!allowance.allowed
+              ? <>Daily limit reached · resets in {allowance.resetInHours}h</>
+              : <>{allowance.remaining} of 3 searches remaining today</>}
+          </span>
+        </div>
 
-        {/* Active filter chips — show below pill when any filter is active, with X to clear each */}
+        {/* Remove isPremium chip — Pro tier hidden during free period.
+            Active filter chips below show only filters that exist. */}
         {hasSearched && activeFilterCount > 0 && (
           <div className="flex flex-wrap justify-center gap-1.5 mb-6 animate-fade-in">
             {filters.isOnline && (
@@ -389,9 +403,6 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
             )}
             {filters.isVerified && (
               <FilterChip label="Verified" onRemove={() => setFilters((p) => ({ ...p, isVerified: false }))} />
-            )}
-            {filters.isPremium && (
-              <FilterChip label="Premium" onRemove={() => setFilters((p) => ({ ...p, isPremium: false }))} />
             )}
             {filters.hasInstagram && (
               <FilterChip label="Has Instagram" onRemove={() => setFilters((p) => ({ ...p, hasInstagram: false }))} />

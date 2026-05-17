@@ -200,6 +200,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const profile = profileRow ? rowToProfile(profileRow) : null;
   const settings = profileRow ? rowToSettings(profileRow) : null;
 
+  // Presence heartbeat — updates last_active_at on app open and every 2 min.
+  // Incognito users skip the heartbeat so they stay hidden from "Online" filter.
+  useEffect(() => {
+    if (!session?.user.id) return;
+    const incognito = settings?.incognito ?? false;
+    const tick = async () => {
+      try {
+        if (incognito) return;
+        await supabase
+          .from('profiles')
+          .update({ last_active_at: new Date().toISOString() })
+          .eq('id', session.user.id);
+      } catch {
+        // best-effort
+      }
+    };
+    tick();
+    const id = setInterval(tick, 2 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [session?.user.id, settings?.incognito]);
+
   return (
     <AuthContext.Provider value={{
       session,

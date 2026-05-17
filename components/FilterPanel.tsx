@@ -280,11 +280,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
               onChange={(v) => update('isVerified', v)}
               label="Verified profiles only"
             />
-            <Toggle
-              checked={filters.isPremium}
-              onChange={(v) => update('isPremium', v)}
-              label="Pro members only"
-            />
+            {/* Pro members filter removed — no paying users exist yet. */}
             <Toggle
               checked={filters.hasInstagram ?? false}
               onChange={(v) => update('hasInstagram', v)}

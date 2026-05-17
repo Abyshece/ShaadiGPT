@@ -81,6 +81,20 @@ export async function runSearch(input: SearchInput): Promise<SearchOutput> {
     pool = data.filter((row) => !likedIds.has(row.id));
   }
 
+  // Pre-step: incognito users only appear to people they've already liked.
+  // We fetch the IDs of users who liked the SEARCHER (so we can show them
+  // even if they're in incognito), and exclude all other incognito users.
+  const incognitoIds = pool.filter((r) => r.settings_incognito).map((r) => r.id);
+  if (incognitoIds.length > 0) {
+    const { data: likedMe } = await supabase
+      .from('likes')
+      .select('liker_id')
+      .eq('liked_id', input.searcherId)
+      .in('liker_id', incognitoIds);
+    const allowedIncognitoIds = new Set((likedMe ?? []).map((r) => r.liker_id as string));
+    pool = pool.filter((row) => !row.settings_incognito || allowedIncognitoIds.has(row.id));
+  }
+
   // 2. Hard filters
   const survivors = applyHardFilters(pool, input.searcher, input.filters);
   const poolSize = survivors.length;

@@ -15,7 +15,7 @@ import type { ProfileRow } from './database.types';
 import type { UserProfile, UserSettings } from '../types';
 
 export const DAILY_LIMITS = {
-  FREE: { searches: 1, likes: 6 },
+  FREE: { searches: 3, likes: 6 },
   PRO:  { searches: Infinity, likes: Infinity },
 } as const;
 
@@ -142,8 +142,10 @@ export interface SearchAllowance {
 }
 
 export function computeSearchAllowance(profile: UserProfile): SearchAllowance {
-  // While PRO_FOR_ALL is on, treat every user as Pro: unlimited searches.
-  if (PRO_FOR_ALL || profile.subscriptionTier === 'PRO') {
+  // Daily limit applies to all signed-in users. PRO_FOR_ALL only unlocks paid
+  // *features* (full likes, sorting, etc.) — not unlimited searches. When real
+  // Pro launches, only paid users will bypass this limit.
+  if (profile.subscriptionTier === 'PRO') {
     return { allowed: true, remaining: Infinity, isPro: true, resetInHours: 0 };
   }
 
@@ -266,4 +268,26 @@ export function computeVerificationStatus(profile: UserProfile): VerificationSta
     hoursUntilLockout: Math.ceil(hoursUntil),
     hoursSinceCreation: Math.floor(hoursSince),
   };
+}
+
+// ----------------------------------------------------------------------------
+// updateLastActive — heartbeat. Called on app open and every 2 minutes after.
+// Powers the "Online" / "Last seen" UI everywhere. Incognito users skip this
+// to stay hidden from the Online filter.
+// ----------------------------------------------------------------------------
+
+export async function updateLastActive(
+  userId: string,
+  incognito = false
+): Promise<void> {
+  if (!userId) return;
+  if (incognito) return;  // Don't broadcast presence when in incognito mode
+  try {
+    await supabase
+      .from('profiles')
+      .update({ last_active_at: new Date().toISOString() })
+      .eq('id', userId);
+  } catch {
+    // Best-effort. Failing to update presence isn't worth surfacing to the user.
+  }
 }

@@ -67,12 +67,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
       setMessages(messages);
       setLoading(false);
-      // mark messages as read on open
-      markRead(matchId);
+      // Mark messages as read on open — but ONLY if the user has read receipts
+      // enabled. With receipts off, we leave read_at null so the sender never
+      // sees "Read" on their side.
+      if (myReadReceipts) {
+        markRead(matchId);
+      }
     });
 
     return () => { mounted = false; };
-  }, [matchId, userId, showToast]);
+  }, [matchId, userId, showToast, myReadReceipts]);
 
   // ---- realtime subscription ----------------------------------------------
   useEffect(() => {
@@ -85,8 +89,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           if (prev.some((m) => m.id === newMsg.id)) return prev;
           return [...prev, newMsg];
         });
-        // If incoming message, mark read
-        if (newMsg.senderId !== userId) {
+        // If incoming message, mark read — only if receipts enabled
+        if (newMsg.senderId !== userId && myReadReceipts) {
           markRead(matchId);
         }
       },
@@ -97,7 +101,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     );
     return cleanup;
-  }, [matchId, userId]);
+  }, [matchId, userId, myReadReceipts]);
 
   // ---- auto-scroll to bottom on new messages ------------------------------
   useEffect(() => {
