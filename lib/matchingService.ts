@@ -72,8 +72,17 @@ export async function runSearch(input: SearchInput): Promise<SearchOutput> {
 
   const totalEligible = data.length;
 
+  // Pre-step: if `notAlreadyLiked` is set, fetch IDs the searcher already liked
+  // and exclude them from the pool BEFORE other filtering.
+  let pool: ProfileRow[] = data;
+  if (input.filters.notAlreadyLiked) {
+    const { listLikesSent } = await import('./likesService');
+    const { likedIds } = await listLikesSent(input.searcherId);
+    pool = data.filter((row) => !likedIds.has(row.id));
+  }
+
   // 2. Hard filters
-  const survivors = applyHardFilters(data, input.searcher, input.filters);
+  const survivors = applyHardFilters(pool, input.searcher, input.filters);
   const poolSize = survivors.length;
 
   // 3. Score every survivor
@@ -118,9 +127,22 @@ function applyHardFilters(
     // ---- Verified only ----
     if (filters.isVerified && !row.is_verified) return false;
 
-    // ---- Has photos (always true since we required onboarding_complete) ----
+    // ---- Online now (filter pill) ----
+    // We consider a user "online" if their last_active_at is within 5 minutes.
+    if (filters.isOnline) {
+      if (!row.last_active_at) return false;
+      const ageMs = Date.now() - new Date(row.last_active_at).getTime();
+      if (ageMs > 5 * 60 * 1000) return false;
+    }
 
-    // ---- Has socials ----
+    // ---- Recently active (within 7 days) ----
+    if (filters.recentlyActive) {
+      if (!row.last_active_at) return false;
+      const ageMs = Date.now() - new Date(row.last_active_at).getTime();
+      if (ageMs > 7 * 24 * 60 * 60 * 1000) return false;
+    }
+
+    // ---- Has socials (only candidates who actually filled in their handle) ----
     if (filters.hasLinkedin && !row.linkedin) return false;
     if (filters.hasInstagram && !row.instagram) return false;
 
@@ -128,16 +150,27 @@ function applyHardFilters(
     if (filters.isPremium && row.subscription_tier !== 'PRO') return false;
 
     // ---- Hard preference filters ----
-    if (filters.ethnicity && row.ethnicity && filters.ethnicity !== row.ethnicity) return false;
-    if (filters.religion && row.religion && filters.religion !== row.religion) return false;
-    if (filters.relationshipType && row.relationship_type && filters.relationshipType !== row.relationship_type) return false;
-    if (filters.datingIntention && row.dating_intention && filters.datingIntention !== row.dating_intention) return false;
-    if (filters.children && row.children && filters.children !== row.children) return false;
-    if (filters.familyPlans && row.family_plans && filters.familyPlans !== row.family_plans) return false;
-    if (filters.educationLevel && row.education_level && filters.educationLevel !== row.education_level) return false;
-    if (filters.politics && row.politics && filters.politics !== row.politics) return false;
+    // STRICT: if a filter is set, the candidate MUST have a matching value.
+    // A candidate who hasn't filled in this field is excluded — otherwise the
+    // filter is meaningless (a Hindu searcher filtering for "Hindu" would
+    // still see every blank-religion profile).
+    if (filters.ethnicity && row.ethnicity !== filters.ethnicity) return false;
+    if (filters.religion && row.religion !== filters.religion) return false;
+    if (filters.relationshipType && row.relationship_type !== filters.relationshipType) return false;
+    if (filters.datingIntention && row.dating_intention !== filters.datingIntention) return false;
+    if (filters.children && row.children !== filters.children) return false;
+    if (filters.familyPlans && row.family_plans !== filters.familyPlans) return false;
+    if (filters.educationLevel && row.education_level !== filters.educationLevel) return false;
+    if (filters.politics && row.politics !== filters.politics) return false;
 
-    // ---- Lifestyle hard filters (e.g. "no smokers") ----
+    // ---- Height filter ----
+    // Stored as free-text (e.g. "5'10\""). We do a direct equality check.
+    // If the field is unset on the candidate, exclude.
+    if (filters.height && row.height !== filters.height) return false;
+
+    // ---- Lifestyle hard filters ----
+    // For these, "no smokers" should only exclude actual smokers, not blank
+    // entries — but the FilterPanel only offers explicit values, so be strict.
     if (filters.smoking && row.smoking !== filters.smoking) return false;
     if (filters.drinking && row.drinking !== filters.drinking) return false;
     if (filters.marijuana && row.marijuana !== filters.marijuana) return false;

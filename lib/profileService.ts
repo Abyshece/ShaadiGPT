@@ -114,6 +114,22 @@ export async function softDeleteAccount(userId: string): Promise<{ error: string
 // ============================================================================
 
 // ----------------------------------------------------------------------------
+// FEATURE FLAG: PRO_FOR_ALL
+//
+// While we're growing our user base, every user gets Pro features for free.
+// This single flag is the source of truth for "is this user effectively Pro?"
+// — turn it off later when we switch to paid Pro.
+// ----------------------------------------------------------------------------
+
+export const PRO_FOR_ALL = true;
+
+/** Single helper everyone should use instead of `profile.subscriptionTier === 'PRO'`. */
+export function isProEffective(profile: UserProfile | null | undefined): boolean {
+  if (PRO_FOR_ALL) return true;
+  return profile?.subscriptionTier === 'PRO';
+}
+
+// ----------------------------------------------------------------------------
 // canSearch — checks daily limit. Returns { allowed, remaining, resetIn }
 // ----------------------------------------------------------------------------
 
@@ -126,10 +142,8 @@ export interface SearchAllowance {
 }
 
 export function computeSearchAllowance(profile: UserProfile): SearchAllowance {
-  const tier = profile.subscriptionTier ?? 'FREE';
-  const isPro = tier === 'PRO';
-
-  if (isPro) {
+  // While PRO_FOR_ALL is on, treat every user as Pro: unlimited searches.
+  if (PRO_FOR_ALL || profile.subscriptionTier === 'PRO') {
     return { allowed: true, remaining: Infinity, isPro: true, resetInHours: 0 };
   }
 

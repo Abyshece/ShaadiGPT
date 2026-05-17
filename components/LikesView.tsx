@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
 import { listLikesReceived } from '../lib/likesService';
+import { isProEffective } from '../lib/profileService';
 import LikedYouCard from './LikedYouCard';
 import ProfileModal from './ProfileModal';
 import UpgradeModal from './UpgradeModal';
@@ -51,7 +52,7 @@ const LikesView: React.FC = () => {
     return <div className="p-12 text-center text-gray-400">Loading…</div>;
   }
 
-  const isPro = profile.subscriptionTier === 'PRO';
+  const isPro = isProEffective(profile);
 
   const handleMatched = (matchId: string, candidate: MatchCandidate) => {
     setSelectedCandidate(null);

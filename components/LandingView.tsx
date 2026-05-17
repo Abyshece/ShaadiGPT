@@ -130,7 +130,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onSignupInitiated, onShowLega
 
           {/* Trust line */}
           <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center mt-12">
-            Free to use · Verified profiles · Built for serious relationships
+            Verified profiles · Built for serious relationships · Real people
           </p>
         </div>
       </main>

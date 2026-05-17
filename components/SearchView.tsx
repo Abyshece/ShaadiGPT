@@ -180,14 +180,15 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
     setHasSearched(true);
 
     try {
-      // Item 4: Free users see 8 results (2 rows × 4 cards), Pro users see up to 50.
-      const isProUser = profile.subscriptionTier === 'PRO';
+      // Everyone gets the Pro-tier 50 results while PRO_FOR_ALL is on
+      // (see profileService.ts). Switch back to a tier-based limit when
+      // paid Pro launches.
       const output = await runSearch({
         searcherId: session.user.id,
         searcher: profile,
         prompt: effectivePrompt,
         filters,
-        limit: isProUser ? 50 : 8,
+        limit: 50,
       });
 
       setResults(output.candidates);
@@ -375,32 +376,8 @@ const SearchView: React.FC<SearchViewProps> = ({ onNavigateToMatches, onNavigate
           </button>
         </div>
 
-        {/* Daily allowance subtitle (subtle, below pill) */}
-        <div className="flex items-center justify-center gap-3 mb-2 flex-wrap text-[11px]">
-          <span className={`inline-flex items-center gap-1.5 font-medium ${
-            allowance.isPro
-              ? 'text-yellow-700 dark:text-yellow-400'
-              : allowance.allowed
-                ? 'text-gray-500 dark:text-gray-400'
-                : 'text-red-600 dark:text-red-400'
-          }`}>
-            {allowance.isPro ? (
-              <><IconZap /> Pro · Unlimited searches</>
-            ) : allowance.allowed ? (
-              <>{allowance.remaining} of 1 search remaining today</>
-            ) : (
-              <>Daily limit reached · resets in {allowance.resetInHours}h</>
-            )}
-          </span>
-          {!allowance.isPro && (
-            <button
-              onClick={() => setShowUpgradeModal(true)}
-              className="font-bold text-yellow-700 dark:text-yellow-400 hover:underline"
-            >
-              Upgrade to Pro →
-            </button>
-          )}
-        </div>
+        {/* Daily-allowance subtitle removed — every user has unlimited searches
+            while PRO_FOR_ALL is on (see profileService.ts). */}
 
         {/* Active filter chips — show below pill when any filter is active, with X to clear each */}
         {hasSearched && activeFilterCount > 0 && (
