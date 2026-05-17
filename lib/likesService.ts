@@ -127,6 +127,72 @@ export async function listLikesSent(likerId: string): Promise<{ likedIds: Set<st
 }
 
 // ----------------------------------------------------------------------------
+// listMyLikesDetailed — like-history view for the current user. Returns full
+// profile cards for everyone they've liked, plus the timestamp of when they
+// liked each one (so HistoryView can group by Today / This week / All time).
+// ----------------------------------------------------------------------------
+
+export interface MyLikeEntry {
+  likeId: string;
+  likedAt: string;     // ISO timestamp
+  isSuperLike: boolean;
+  candidate: MatchCandidate;
+}
+
+export async function listMyLikesDetailed(
+  likerId: string
+): Promise<{ entries: MyLikeEntry[]; error: string | null }> {
+  // Pull every like the user has sent, newest first
+  const { data: likeRows, error: likeErr } = await supabase
+    .from('likes')
+    .select('id, liked_id, is_super_like, created_at')
+    .eq('liker_id', likerId)
+    .order('created_at', { ascending: false });
+  if (likeErr) return { entries: [], error: likeErr.message };
+  if (!likeRows || likeRows.length === 0) return { entries: [], error: null };
+
+  // Hydrate with full profile data
+  const ids = likeRows.map((r) => r.liked_id as string);
+  const { data: profileRows, error: profErr } = await supabase
+    .from('profiles')
+    .select('id, name, age, location, description, photo_urls, is_verified, subscription_tier, hidden_fields, is_banned')
+    .in('id', ids);
+  if (profErr) return { entries: [], error: profErr.message };
+
+  const profileMap = new Map(
+    (profileRows ?? []).map((p) => [p.id as string, p])
+  );
+
+  const entries: MyLikeEntry[] = likeRows
+    .map((row) => {
+      const p = profileMap.get(row.liked_id as string);
+      if (!p || p.is_banned) return null;  // skip if profile gone or banned
+      return {
+        likeId: row.id as string,
+        likedAt: row.created_at as string,
+        isSuperLike: row.is_super_like as boolean,
+        candidate: {
+          id: p.id as string,
+          name: (p.name as string) ?? '',
+          age: (p.age as number) ?? 0,
+          location: (p.location as string) ?? '',
+          compatibilityScore: 0,
+          tags: row.is_super_like ? ['You super-liked'] : ['You liked'],
+          bio: (p.description as string) ?? '',
+          imageUrls: ((p.photo_urls as string[] | null) ?? []),
+          isVerified: (p.is_verified as boolean) ?? false,
+          isPremium: (p.subscription_tier as string) === 'PRO',
+          subscriptionTier: (p.subscription_tier as 'FREE' | 'PRO') ?? 'FREE',
+          hiddenFields: ((p.hidden_fields as string[] | null) ?? []),
+        },
+      };
+    })
+    .filter((e): e is MyLikeEntry => e !== null);
+
+  return { entries, error: null };
+}
+
+// ----------------------------------------------------------------------------
 // listLikesReceived — full inbox of incoming likes via RPC
 // ----------------------------------------------------------------------------
 

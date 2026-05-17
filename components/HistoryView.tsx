@@ -1,22 +1,28 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/useToast';
 import { loadHistory, deleteSearch, clearHistory } from '../lib/searchHistoryService';
 import { runSearch } from '../lib/matchingService';
 import { incrementSearchCount, computeSearchAllowance } from '../lib/profileService';
+import { listMyLikesDetailed } from '../lib/likesService';
 import MatchCard from './MatchCard';
 import ProfileModal from './ProfileModal';
 import UpgradeModal from './UpgradeModal';
-import { IconSearch, IconTrash, IconClock, IconHistory } from '../constants';
+import { IconSearch, IconTrash, IconClock, IconHistory, IconHeart } from '../constants';
 import type { SavedSearch } from '../lib/searchHistoryService';
+import type { MyLikeEntry } from '../lib/likesService';
 import type { MatchCandidate } from '../types';
 
 // ============================================================================
 // HistoryView
 //
-// Lists the user's past searches. Click one to navigate to Find Match tab
-// with the prompt + filters pre-applied and auto-run.
+// Two tabs:
+//   - Searches: past search prompts the user can click to re-run
+//   - Liked: every profile the user has liked, with Today/Week/All filter
 // ============================================================================
+
+type HistoryTab = 'searches' | 'liked';
+type TimeFilter = 'today' | 'week' | 'all';
 
 interface HistoryViewProps {
   onOpenInSearch?: (saved: SavedSearch) => void;
@@ -26,7 +32,11 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onOpenInSearch }) => {
   const { profile, session, refreshProfile } = useAuth();
   const { showToast } = useToast();
 
+  const [tab, setTab] = useState<HistoryTab>('searches');
   const [history, setHistory] = useState<SavedSearch[]>([]);
+  const [liked, setLiked] = useState<MyLikeEntry[]>([]);
+  const [likedLoading, setLikedLoading] = useState(false);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [loading, setLoading] = useState(true);
   const [activeSearch, setActiveSearch] = useState<SavedSearch | null>(null);
   const [results, setResults] = useState<MatchCandidate[]>([]);
@@ -47,6 +57,33 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onOpenInSearch }) => {
   }, [session?.user.id, showToast]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  // Fetch liked profiles when user opens the Liked tab (lazy)
+  const fetchLiked = useCallback(async () => {
+    if (!session?.user.id) return;
+    setLikedLoading(true);
+    const { entries, error } = await listMyLikesDetailed(session.user.id);
+    setLikedLoading(false);
+    if (error) {
+      showToast(`Couldn't load likes: ${error}`, 'error');
+      return;
+    }
+    setLiked(entries);
+  }, [session?.user.id, showToast]);
+
+  useEffect(() => {
+    if (tab === 'liked') fetchLiked();
+  }, [tab, fetchLiked]);
+
+  // Apply time filter to liked entries
+  const filteredLiked = useMemo(() => {
+    if (timeFilter === 'all') return liked;
+    const now = Date.now();
+    const cutoff = timeFilter === 'today'
+      ? now - 24 * 60 * 60 * 1000
+      : now - 7 * 24 * 60 * 60 * 1000;
+    return liked.filter((e) => new Date(e.likedAt).getTime() >= cutoff);
+  }, [liked, timeFilter]);
 
   const handleRerun = useCallback((saved: SavedSearch) => {
     if (!profile || !session?.user.id) return;
@@ -146,6 +183,93 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onOpenInSearch }) => {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-6xl mx-auto py-8 px-6 lg:px-12">
+        {/* Tab switcher */}
+        <div className="flex gap-1 mb-6 border-b border-gray-200 dark:border-zinc-800">
+          <button
+            onClick={() => setTab('searches')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              tab === 'searches'
+                ? 'border-black dark:border-white text-black dark:text-white'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <IconHistory /> Searches
+          </button>
+          <button
+            onClick={() => setTab('liked')}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              tab === 'liked'
+                ? 'border-black dark:border-white text-black dark:text-white'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            <IconHeart /> Liked profiles
+          </button>
+        </div>
+
+        {tab === 'liked' ? (
+          <>
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-1">Profiles you liked</h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Every profile you've liked. {liked.length === 0 ? '' : `${filteredLiked.length} of ${liked.length} shown.`}
+                </p>
+              </div>
+              {liked.length > 0 && (
+                <div className="inline-flex rounded-full bg-gray-100 dark:bg-zinc-800 p-1 text-xs font-bold">
+                  {(['today', 'week', 'all'] as TimeFilter[]).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setTimeFilter(f)}
+                      className={`px-3 py-1.5 rounded-full transition-colors capitalize ${
+                        timeFilter === f
+                          ? 'bg-white dark:bg-zinc-900 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      {f === 'today' ? 'Today' : f === 'week' ? 'This week' : 'All time'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {likedLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <div key={i} className="aspect-[3/4] rounded-xl bg-gray-100 dark:bg-zinc-800 animate-pulse" />
+                ))}
+              </div>
+            ) : liked.length === 0 ? (
+              <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900/50 rounded-xl border border-gray-100 dark:border-zinc-800">
+                <div className="text-5xl mb-4">💖</div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No likes yet</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                  Profiles you like will appear here. Start exploring from Find Match.
+                </p>
+              </div>
+            ) : filteredLiked.length === 0 ? (
+              <div className="text-center py-20 bg-gray-50 dark:bg-zinc-900/50 rounded-xl border border-gray-100 dark:border-zinc-800">
+                <div className="text-5xl mb-4">⏱️</div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">No likes in this window</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Try switching to "All time".</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredLiked.map((entry) => (
+                  <MatchCard
+                    key={entry.likeId}
+                    candidate={entry.candidate}
+                    onClick={() => setSelectedCandidate(entry.candidate)}
+                    showLikeButton={false}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight mb-1">Search History</h1>
@@ -246,6 +370,8 @@ const HistoryView: React.FC<HistoryViewProps> = ({ onOpenInSearch }) => {
                 )}
               </div>
             )}
+          </>
+        )}
           </>
         )}
       </div>
