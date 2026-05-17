@@ -291,3 +291,27 @@ export async function updateLastActive(
     // Best-effort. Failing to update presence isn't worth surfacing to the user.
   }
 }
+
+// ----------------------------------------------------------------------------
+// setPauseStatus — pause or resume matching
+// ----------------------------------------------------------------------------
+// When paused, the user disappears from search results everywhere (eligible_
+// profiles view excludes paused users in 012_pause_and_gdpr_export.sql).
+// Existing matches and chats keep working — only NEW discovery is blocked.
+// Different from incognito: incognito users still appear to people who liked
+// them. Paused users are invisible to everyone.
+
+export async function setPauseStatus(
+  userId: string,
+  isPaused: boolean
+): Promise<{ error: string | null }> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      is_paused: isPaused,
+      paused_at: isPaused ? new Date().toISOString() : null,
+    })
+    .eq('id', userId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
